@@ -1,0 +1,35 @@
+# Node
+node_modules/
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+
+# Runtime artifacts
+tmp/
+uploads/
+apps/api/tmp_*/
+apps/api/tmp_*.mid
+*.log
+
+# Local model artifacts
+models/

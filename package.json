@@ -1,0 +1,13 @@
+{
+  "name": "keytone-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "npm --prefix apps/web run dev",
+    "dev:api": ".\\apps\\api\\.venv\\Scripts\\python.exe -m uvicorn --app-dir apps/api app.main:app --host 127.0.0.1 --port 8000",
+    "dev:all": "powershell -NoProfile -Command \"Start-Process -FilePath npm -ArgumentList 'run dev:api'; npm run dev\"",
+    "build": "npm --prefix apps/web run build",
+    "lint": "npm --prefix apps/web run lint",
+    "typecheck": "npm --prefix apps/web run typecheck"
+  }
+}
