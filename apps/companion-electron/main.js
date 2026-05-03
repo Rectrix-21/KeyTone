@@ -17,6 +17,7 @@ const { exec } = require("child_process");
 
 const PORT = Number(process.env.PORT ?? 5000);
 const MODEL = process.env.DEMUCS_MODEL || "htdemucs";
+const DEMUCS_CMD = process.env.DEMUCS_CMD || "demucs";
 const TRAY_ICON_DATA =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=";
 
@@ -39,15 +40,35 @@ function quotePath(value) {
   return `"${String(value).replace(/\"/g, '\\"')}"`;
 }
 
+function trimMessage(value, limit = 600) {
+  if (!value) {
+    return "";
+  }
+  const message = String(value).trim();
+  if (message.length <= limit) {
+    return message;
+  }
+  return `${message.slice(0, limit)}...`;
+}
+
+function buildDemucsError(error, stderr) {
+  const detail =
+    trimMessage(stderr) || trimMessage(error?.message) || "Unknown error";
+  if (/not recognized|not found/i.test(detail)) {
+    return "Demucs CLI not found. Install with 'pip install demucs' and make sure it is on PATH, or set DEMUCS_CMD=python -m demucs.";
+  }
+  return `Extraction failed: ${detail}`;
+}
+
 function runDemucs(inputPath, outputDir) {
   return new Promise((resolve, reject) => {
-    const command = `demucs -n ${MODEL} -o ${quotePath(outputDir)} ${quotePath(inputPath)}`;
+    const command = `${DEMUCS_CMD} -n ${MODEL} -o ${quotePath(outputDir)} ${quotePath(inputPath)}`;
     exec(command, { maxBuffer: 10 * 1024 * 1024 }, (error, _stdout, stderr) => {
       if (stderr) {
         console.error(stderr);
       }
       if (error) {
-        reject(new Error("Extraction failed"));
+        reject(new Error(buildDemucsError(error, stderr)));
         return;
       }
       const baseName = path.parse(inputPath).name;
@@ -90,7 +111,9 @@ function startLocalServer(baseDir) {
       return res.json({ status: "ok", outputDir: outputDirPath });
     } catch (error) {
       await fs.promises.unlink(req.file.path).catch(() => undefined);
-      return res.status(500).json({ error: "Extraction failed" });
+      return res
+        .status(500)
+        .json({ error: error?.message || "Extraction failed" });
     }
   });
 

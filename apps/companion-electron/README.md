@@ -20,6 +20,12 @@ npm install
 npm run dev
 ```
 
+If the app says Demucs is missing, set this before launching:
+
+```bash
+set DEMUCS_CMD=python -m demucs
+```
+
 ## Build installers
 
 ```bash
