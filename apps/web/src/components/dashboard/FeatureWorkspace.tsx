@@ -49,6 +49,8 @@ const POLL_MS = 2500;
 const MAX_HISTORY_ITEMS = 10;
 const ANALYZER_HISTORY_STORAGE_KEY = "dashboard.discoverHistory.v1";
 const FEATURE_CLEAR_CUTOFF_STORAGE_KEY = "dashboard.featureClearCutoffs.v1";
+const WORKSPACE_BOOTSTRAP_CACHE_KEY = "dashboard.workspaceBootstrap.v1";
+const WORKSPACE_BOOTSTRAP_CACHE_TTL_MS = 3 * 60 * 1000;
 const SPOTIFY_SEARCH_DEBOUNCE_MS = 120;
 const SPOTIFY_SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const BPM_FINDER_MIN = 40;
@@ -70,6 +72,16 @@ type SpotifySearchCacheEntry = {
   tracks: SpotifyTrackSummary[];
   cachedAt: number;
 };
+
+type WorkspaceBootstrapCache = {
+  token: string;
+  me: UserSummary;
+  projects: Project[];
+  featureClearCutoffs: FeatureClearCutoffs;
+  cachedAt: number;
+};
+
+let workspaceBootstrapMemoryCache: WorkspaceBootstrapCache | null = null;
 
 type AnalyzedHistoryEntry = {
   id: string;
@@ -313,6 +325,89 @@ function applyProjectHistoryPolicy(
   return limitProjectHistory(filtered);
 }
 
+function isWorkspaceBootstrapCache(
+  value: unknown,
+): value is WorkspaceBootstrapCache {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.token === "string" &&
+    Array.isArray(record.projects) &&
+    typeof record.me === "object" &&
+    record.me !== null &&
+    typeof record.cachedAt === "number"
+  );
+}
+
+function readWorkspaceBootstrapCache(): WorkspaceBootstrapCache | null {
+  if (
+    workspaceBootstrapMemoryCache &&
+    Date.now() - workspaceBootstrapMemoryCache.cachedAt <=
+      WORKSPACE_BOOTSTRAP_CACHE_TTL_MS
+  ) {
+    return workspaceBootstrapMemoryCache;
+  }
+
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(WORKSPACE_BOOTSTRAP_CACHE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isWorkspaceBootstrapCache(parsed)) {
+      return null;
+    }
+
+    if (Date.now() - parsed.cachedAt > WORKSPACE_BOOTSTRAP_CACHE_TTL_MS) {
+      return null;
+    }
+
+    workspaceBootstrapMemoryCache = parsed;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeWorkspaceBootstrapCache(cache: WorkspaceBootstrapCache): void {
+  workspaceBootstrapMemoryCache = cache;
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      WORKSPACE_BOOTSTRAP_CACHE_KEY,
+      JSON.stringify(cache),
+    );
+  } catch {
+    // Ignore cache persistence failures.
+  }
+}
+
+function clearWorkspaceBootstrapCache(): void {
+  workspaceBootstrapMemoryCache = null;
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem(WORKSPACE_BOOTSTRAP_CACHE_KEY);
+  } catch {
+    // Ignore cache removal failures.
+  }
+}
+
 interface FeatureWorkspaceProps {
   featureRoute?: FeatureRoute;
 }
@@ -320,8 +415,13 @@ interface FeatureWorkspaceProps {
 export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
   const initialTabState = featureRouteToTabState(featureRoute);
   const showWorkspaceSwitcher = !featureRoute;
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [me, setMe] = useState<UserSummary | null>(null);
+  const initialBootstrap = useMemo(() => readWorkspaceBootstrapCache(), []);
+  const [projects, setProjects] = useState<Project[]>(
+    () => initialBootstrap?.projects ?? [],
+  );
+  const [me, setMe] = useState<UserSummary | null>(
+    () => initialBootstrap?.me ?? null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [generatingByProject, setGeneratingByProject] = useState<
@@ -337,9 +437,13 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     Record<string, boolean>
   >({});
   const [clearingHistory, setClearingHistory] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(
+    () => initialBootstrap?.token ?? null,
+  );
   const [featureClearCutoffs, setFeatureClearCutoffs] =
-    useState<FeatureClearCutoffs>(() => readFeatureClearCutoffs());
+    useState<FeatureClearCutoffs>(
+      () => initialBootstrap?.featureClearCutoffs ?? readFeatureClearCutoffs(),
+    );
   const [tab, setTab] = useState<DashboardTab>(initialTabState.tab);
   const [lastCreateSubTab, setLastCreateSubTab] = useState<CreateSubTab>(
     initialTabState.tab === "discover" ? "extraction" : initialTabState.tab,
@@ -1144,6 +1248,28 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
   }, [featureClearCutoffs]);
 
   useEffect(() => {
+    if (!token || !me) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      writeWorkspaceBootstrapCache({
+        token,
+        me,
+        projects,
+        featureClearCutoffs,
+        cachedAt: Date.now(),
+      });
+    }, 120);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [featureClearCutoffs, me, projects, token]);
+
+  useEffect(() => {
+    let cancelled = false;
+
     const run = async () => {
       const supabase = createClient();
       let { data } = await supabase.auth.getSession();
@@ -1157,21 +1283,47 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
       }
 
       if (!accessToken) {
+        clearWorkspaceBootstrapCache();
         window.location.href = "/login";
         return;
       }
 
+      if (cancelled) {
+        return;
+      }
+
       setToken(accessToken);
+
       try {
         const [projectsData, meData] = await Promise.all([
           listProjects(accessToken),
           getMe(accessToken),
         ]);
+
+        if (cancelled) {
+          return;
+        }
+
         const clearCutoffs = readFeatureClearCutoffs();
+        const filteredProjects = applyProjectHistoryPolicy(
+          projectsData,
+          clearCutoffs,
+        );
         setFeatureClearCutoffs(clearCutoffs);
-        setProjects(applyProjectHistoryPolicy(projectsData, clearCutoffs));
+        setProjects(filteredProjects);
         setMe(meData);
+        writeWorkspaceBootstrapCache({
+          token: accessToken,
+          me: meData,
+          projects: filteredProjects,
+          featureClearCutoffs: clearCutoffs,
+          cachedAt: Date.now(),
+        });
       } catch (loadError) {
+        if (cancelled) {
+          return;
+        }
+
         setError(
           loadError instanceof Error
             ? loadError.message
@@ -1181,6 +1333,10 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     };
 
     void run();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const activePollingProjectIds = useMemo(() => {
@@ -2092,7 +2248,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
           </p>
         </section>
       ) : (
-        <section className="relative mb-4 overflow-hidden rounded-2xl border border-fuchsia-400/28 bg-black/45 p-5 sm:p-6">
+        <section className="relative mb-4 overflow-hidden rounded-2xl border border-[rgba(147,51,234,0.34)] bg-black/45 p-5 sm:p-6">
           <div
             className="pointer-events-none absolute inset-0"
             aria-hidden="true"

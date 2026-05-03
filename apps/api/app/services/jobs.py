@@ -722,7 +722,7 @@ async def process_project(
                         input_audio,
                         temp_path / "separated",
                         selected_model,
-                        "cpu",
+                        settings.demucs_device_preference,
                     )
                     separated_stems = separation_result.stem_paths
                     if feature == "extraction" and extract_targets:

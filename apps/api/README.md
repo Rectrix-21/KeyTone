@@ -37,7 +37,11 @@ Then set these environment values in `.env`:
 MUSICVAE_ENABLED=true
 MUSICVAE_CHECKPOINT_PATH=/absolute/path/to/musicvae/checkpoint
 MUSICVAE_CONFIG_NAME=cat-mel_2bar_big
+DEMUCS_DEVICE_PREFERENCE=auto
 ```
+
+`DEMUCS_DEVICE_PREFERENCE` accepts `auto`, `gpu`, or `cpu`.
+Use `auto` to prefer CUDA when available and fall back to CPU.
 
 If MusicVAE is not available or not configured, the API will automatically fall back to deterministic candidate mutation while keeping the same scoring and selection pipeline.
 

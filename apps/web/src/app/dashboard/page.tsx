@@ -175,7 +175,7 @@ export default function DashboardHubPage() {
 
   return (
     <ToolPageShell active="dashboard">
-      <section className="relative overflow-hidden rounded-2xl border border-cyan-500/28 bg-black/45 p-5 sm:p-6">
+      <section className="relative overflow-hidden rounded-2xl border border-[rgba(8,145,178,0.34)] bg-black/45 p-5 sm:p-6">
         <div
           className="pointer-events-none absolute inset-0"
           aria-hidden="true"
@@ -212,7 +212,7 @@ export default function DashboardHubPage() {
       </section>
 
       <section className="mt-6 space-y-5">
-        <article className="rounded-2xl border border-cyan-500/22 bg-black/35 p-4 sm:p-5">
+        <article className="rounded-2xl border border-[rgba(8,145,178,0.3)] bg-black/35 p-4 sm:p-5">
           <p className="text-sm uppercase tracking-[0.13em] text-cyan-200/80">
             Discover
           </p>
@@ -226,7 +226,7 @@ export default function DashboardHubPage() {
           <div className="mt-4">{renderCardGrid(discoverCards)}</div>
         </article>
 
-        <article className="rounded-2xl border border-fuchsia-500/22 bg-black/35 p-4 sm:p-5">
+        <article className="rounded-2xl border border-[rgba(147,51,234,0.3)] bg-black/35 p-4 sm:p-5">
           <p className="text-sm uppercase tracking-[0.13em] text-fuchsia-200/80">
             Create
           </p>

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 25 * 1024 * 1024
     allowed_audio_extensions: str = "mp3,wav,m4a"
     demucs_model: str = "htdemucs_6s"
+    demucs_device_preference: str = "auto"
     musicvae_enabled: bool = True
     musicvae_checkpoint_path: str = ""
     musicvae_config_name: str = "cat-mel_2bar_big"

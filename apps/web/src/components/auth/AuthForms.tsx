@@ -11,6 +11,10 @@ export function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const envError = getSupabaseEnvError();
+  const authRedirectTo =
+    typeof window === "undefined"
+      ? undefined
+      : `${window.location.origin}/auth/callback`;
 
   const onGoogleSignIn = async () => {
     setError(null);
@@ -25,7 +29,7 @@ export function LoginForm() {
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+        redirectTo: authRedirectTo,
       },
     });
 
@@ -112,6 +116,10 @@ export function SignupForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const envError = getSupabaseEnvError();
+  const authRedirectTo =
+    typeof window === "undefined"
+      ? undefined
+      : `${window.location.origin}/auth/callback`;
 
   const onGoogleSignIn = async () => {
     setError(null);
@@ -126,7 +134,7 @@ export function SignupForm() {
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+        redirectTo: authRedirectTo,
       },
     });
 
@@ -150,6 +158,9 @@ export function SignupForm() {
     const { error: signupError } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: authRedirectTo,
+      },
     });
     setLoading(false);
 

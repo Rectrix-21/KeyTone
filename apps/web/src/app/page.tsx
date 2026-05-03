@@ -5,31 +5,37 @@ const LANDING_FEATURES = [
     title: "MIDI Generator",
     description: "Generate structured MIDI ideas in seconds.",
     label: "MG",
+    href: "/generator",
   },
   {
     title: "Chord Improver",
     description: "Upgrade progressions with smarter voicing.",
     label: "CI",
+    href: "/chords",
   },
   {
-    title: "Stem Extraction",
+    title: "Stem and Midi Extraction",
     description: "Split tracks into focused production stems.",
     label: "SE",
+    href: "/extract",
   },
   {
     title: "Track Analyzer",
     description: "Detect BPM, key, sections, and harmonic flow.",
     label: "TA",
+    href: "/analyzer",
   },
   {
     title: "Similar Songs",
     description: "Find references with matching vibe and texture.",
     label: "SS",
+    href: "/similar",
   },
   {
     title: "BPM Tools",
     description: "Tap tempo and lock groove with confidence.",
     label: "BT",
+    href: "/bpm",
   },
 ] as const;
 
@@ -53,11 +59,6 @@ export default function HomePage() {
     <main className="home-landing-shell relative mx-auto w-full max-w-[1500px] px-4 py-12 sm:px-6 sm:py-16 xl:px-10">
       <div className="home-landing-aurora" aria-hidden="true" />
       <div className="home-landing-grid" aria-hidden="true" />
-      <div className="home-landing-particles" aria-hidden="true">
-        {Array.from({ length: 12 }).map((_, index) => (
-          <span key={`landing-particle-${index}`} />
-        ))}
-      </div>
 
       <section className="relative overflow-hidden rounded-3xl border border-cyan-500/25 bg-black/35 px-6 py-12 backdrop-blur-sm sm:px-10 sm:py-16">
         <div className="home-hero-glow" aria-hidden="true" />
@@ -109,6 +110,14 @@ export default function HomePage() {
               <p className="mt-2 text-base text-foreground/72">
                 {feature.description}
               </p>
+              <div className="mt-4">
+                <Link
+                  href={feature.href}
+                  className="inline-flex items-center rounded-lg border border-cyan-700/45 bg-black/35 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:border-cyan-300/55 hover:bg-cyan-500/10"
+                >
+                  Try {feature.title}
+                </Link>
+              </div>
             </article>
           ))}
         </div>
@@ -140,23 +149,29 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mt-16 rounded-3xl border border-fuchsia-500/24 bg-black/35 px-6 py-10 text-center backdrop-blur-sm sm:px-8">
+      <section className="mt-16 rounded-3xl border border-[rgba(147,51,234,0.34)] bg-black/35 px-6 py-10 text-center backdrop-blur-sm sm:px-8">
         <p className="text-sm uppercase tracking-[0.14em] text-fuchsia-200/80">
           Start Now
         </p>
         <h2 className="mt-2 text-3xl font-semibold text-fuchsia-100 sm:text-4xl">
-          Start creating in seconds
+          Jump into your workflow in seconds
         </h2>
         <p className="mx-auto mt-3 max-w-2xl text-base text-foreground/72 sm:text-lg">
-          Open your workspace, pick a tool, and turn ideas into musical output
-          without friction.
+          Enter directly into Create for production tools or Discover for
+          analysis and reference-finding.
         </p>
-        <div className="mt-7">
+        <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
           <Link
-            href="/dashboard"
+            href="/generator"
             className="cyber-btn-primary home-cta-primary inline-flex px-7 py-3 text-base font-medium"
           >
-            Enter Dashboard
+            Enter Create
+          </Link>
+          <Link
+            href="/analyzer"
+            className="cyber-btn home-cta-secondary inline-flex px-7 py-3 text-base"
+          >
+            Enter Discover
           </Link>
         </div>
       </section>
