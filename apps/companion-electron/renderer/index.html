@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KeyTone Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div>
+          <p class="eyebrow">KeyTone Studio</p>
+          <h1>Local High Quality Stems</h1>
+          <p class="subtitle">
+            Run Demucs on your own CPU or GPU for faster, cleaner stems.
+          </p>
+        </div>
+        <div class="status" id="serverStatus">Checking local API...</div>
+      </header>
+
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <p class="label">Step 1</p>
+            <h2>Select a track</h2>
+            <p class="muted">MP3, WAV, or M4A supported.</p>
+          </div>
+          <button id="selectFileBtn" class="btn">Choose Audio File</button>
+        </div>
+        <div class="file-row" id="fileRow">No file selected.</div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <p class="label">Step 2</p>
+            <h2>Extract stems</h2>
+            <p class="muted">
+              Demucs runs locally and writes to your output folder.
+            </p>
+          </div>
+          <button id="extractBtn" class="btn btn-primary" disabled>
+            Extract Stems
+          </button>
+        </div>
+        <div class="progress" id="progress">Idle</div>
+        <div class="output" id="output"></div>
+        <div class="actions">
+          <button id="openFolderBtn" class="btn btn-ghost" disabled>
+            Open Output Folder
+          </button>
+        </div>
+      </section>
+
+      <section class="card grid">
+        <div>
+          <h3>Local API for Web</h3>
+          <p class="muted">
+            Your website can call
+            <span class="mono">http://localhost:5000/extract</span>
+            while this app is running.
+          </p>
+        </div>
+        <div>
+          <h3>Tip</h3>
+          <p class="muted">
+            Keep this app open while you use the web studio. It runs quietly in
+            the background.
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>
