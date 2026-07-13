@@ -24,7 +24,7 @@ from app.services.jobs import (
     process_project,
     start_project_task,
 )
-from app.services.repository import Repository
+from app.services.repository import Repository, is_pro_tier
 from app.services.similar_song_service import (
     find_similar_songs,
     get_selected_track_context,
@@ -58,6 +58,9 @@ def _discover_cache_set(cache_key: str, value: dict[str, Any]) -> None:
 
 
 StarterVariant = Literal["safe", "fresh", "experimental"]
+
+STANDARD_VARIATION_INTENTS = {"catchier", "richer", "smoother", "emotional"}
+STANDARD_VARIATION_STYLES = {"auto", "lift"}
 
 
 class SimilarTracksRequest(BaseModel):
@@ -408,7 +411,7 @@ async def generate_track_starter(
     user: AuthUser = CurrentUser,
 ) -> dict[str, str | list[str] | int]:
     repository = Repository()
-    repository.ensure_profile(user.id, user.email)
+    profile = repository.ensure_profile(user.id, user.email)
 
     consumed = repository.consume_credit(user.id, is_admin=user.is_admin)
     if not consumed:
@@ -421,7 +424,10 @@ async def generate_track_starter(
     if bars not in {8, 16}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bars must be 8 or 16")
     bars_value: Literal[8, 16] = 16 if bars == 16 else 8
-    variants: tuple[StarterVariant, ...] = ("safe", "fresh", "experimental")
+    is_pro = is_pro_tier(profile.get("subscription_status", "free"), user.is_admin)
+    variants: tuple[StarterVariant, ...] = (
+        ("safe", "fresh", "experimental") if is_pro else ("safe",)
+    )
     base_seed = secrets.randbelow(2_147_483_647) + 1
 
     project_ids: list[str] = []
@@ -467,7 +473,11 @@ async def generate_track_starter(
         "status": "pending",
         "count": len(project_ids),
         "project_ids": project_ids,
-        "message": "Generated safe, fresh, and experimental starter ideas",
+        "message": (
+            "Generated safe, fresh, and experimental starter ideas"
+            if is_pro
+            else "Generated a safe starter idea. Upgrade to Pro for fresh and experimental variants."
+        ),
     }
 
 
@@ -503,6 +513,14 @@ async def alter_project_variation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if project.feature != "variation":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Alter is only available for variation projects")
+
+    profile = repository.ensure_profile(user.id, user.email)
+    if not is_pro_tier(profile.get("subscription_status", "free"), user.is_admin):
+        if intent not in STANDARD_VARIATION_INTENTS or style not in STANDARD_VARIATION_STYLES:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This chord/variation style is available on the Pro plan. Upgrade to unlock it.",
+            )
 
     normalized_key = key.strip() or "C major"
     start_project_task(

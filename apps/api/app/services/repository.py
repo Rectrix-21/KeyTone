@@ -1,8 +1,15 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.schemas.models import ProjectResponse
 from app.services.supabase_client import get_supabase_service_client
+
+FREE_PLAN_WEEKLY_CREDITS = 5
+CREDIT_RESET_INTERVAL = timedelta(days=7)
+
+
+def is_pro_tier(subscription_status: str, is_admin: bool) -> bool:
+    return is_admin or subscription_status == "active"
 
 
 class Repository:
@@ -17,11 +24,38 @@ class Repository:
         )
 
         data = profile_response.data[0]
-        return data
+        return self._apply_weekly_credit_reset(data)
 
     def get_profile(self, user_id: str) -> dict[str, Any]:
         result = self.client.table("profiles").select("*").eq("id", user_id).limit(1).execute()
-        return result.data[0]
+        return self._apply_weekly_credit_reset(result.data[0])
+
+    def _apply_weekly_credit_reset(self, profile: dict[str, Any]) -> dict[str, Any]:
+        if profile.get("subscription_status") == "active":
+            return profile
+
+        reset_at_raw = profile.get("credits_reset_at")
+        if not reset_at_raw:
+            return profile
+
+        reset_at = datetime.fromisoformat(str(reset_at_raw).replace("Z", "+00:00"))
+        now = datetime.now(UTC)
+        if now - reset_at < CREDIT_RESET_INTERVAL:
+            return profile
+
+        updated = (
+            self.client.table("profiles")
+            .update(
+                {
+                    "remaining_credits": FREE_PLAN_WEEKLY_CREDITS,
+                    "credits_reset_at": now.isoformat(),
+                    "updated_at": now.isoformat(),
+                }
+            )
+            .eq("id", profile["id"])
+            .execute()
+        )
+        return updated.data[0]
 
     def consume_credit(self, user_id: str, is_admin: bool = False) -> bool:
         profile = self.get_profile(user_id)
