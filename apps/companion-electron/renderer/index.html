@@ -15,15 +15,29 @@
   <body>
     <div class="app">
       <header class="header">
-        <div>
-          <p class="eyebrow">KeyTone Studio</p>
-          <h1>Local High Quality Stems</h1>
-          <p class="subtitle">
-            Run Demucs on your own CPU or GPU for faster, cleaner stems.
-          </p>
+        <div class="brand">
+          <img id="appLogo" class="app-logo" alt="KeyTone Studio logo" />
+          <div>
+            <p class="eyebrow">KeyTone Studio</p>
+            <h1>Local High Quality Stems</h1>
+            <p class="subtitle">
+              Run Demucs on your own CPU or GPU for faster, cleaner stems.
+            </p>
+          </div>
         </div>
         <div class="status" id="serverStatus">Checking local API...</div>
       </header>
+
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <p class="label">Setup</p>
+            <h2>AI Engine</h2>
+          </div>
+          <button id="installEngineBtn" class="btn">Install AI Engine</button>
+        </div>
+        <div class="progress" id="engineStatus">Checking engine...</div>
+      </section>
 
       <section class="card">
         <div class="card-header">
@@ -41,6 +55,46 @@
         <div class="card-header">
           <div>
             <p class="label">Step 2</p>
+            <h2>Choose stems</h2>
+            <p class="muted">
+              Select which stems you want to export. This 6-stem model can
+              output drums, bass, vocals, piano, guitar and others
+            </p>
+          </div>
+        </div>
+        <div class="stem-grid" id="stemGrid">
+          <button class="stem-pill" data-stem="drums">Drums</button>
+          <button class="stem-pill" data-stem="bass">Bass</button>
+          <button class="stem-pill" data-stem="vocals">Vocals</button>
+          <button class="stem-pill" data-stem="other">Other</button>
+          <button class="stem-pill" data-stem="piano">Piano</button>
+          <button class="stem-pill" data-stem="guitar">Guitar</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <p class="label">Step 3</p>
+            <h2>Choose output folder</h2>
+            <p class="muted">
+              Save extracted stems to a custom folder, or leave it on the app
+              default.
+            </p>
+          </div>
+          <button id="selectOutputDirBtn" class="btn">
+            Choose Output Folder
+          </button>
+        </div>
+        <div class="file-row" id="outputDirRow">
+          Using app default output folder.
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <p class="label">Step 4</p>
             <h2>Extract stems</h2>
             <p class="muted">
               Demucs runs locally and writes to your output folder.
@@ -51,29 +105,15 @@
           </button>
         </div>
         <div class="progress" id="progress">Idle</div>
+        <div class="progress-bar" aria-hidden="true">
+          <div class="progress-bar__fill" id="progressFill"></div>
+        </div>
         <div class="output" id="output"></div>
+        <div class="stem-output" id="stemOutput"></div>
         <div class="actions">
           <button id="openFolderBtn" class="btn btn-ghost" disabled>
             Open Output Folder
           </button>
-        </div>
-      </section>
-
-      <section class="card grid">
-        <div>
-          <h3>Local API for Web</h3>
-          <p class="muted">
-            Your website can call
-            <span class="mono">http://localhost:5000/extract</span>
-            while this app is running.
-          </p>
-        </div>
-        <div>
-          <h3>Tip</h3>
-          <p class="muted">
-            Keep this app open while you use the web studio. It runs quietly in
-            the background.
-          </p>
         </div>
       </section>
     </div>

@@ -12,6 +12,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "ffmpeg-static": "^5.2.0",
     "multer": "^1.4.5-lts.1"
   },
   "devDependencies": {
@@ -19,8 +20,19 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.keytone.studio",
+    "appId": "com.keytone.studio.local",
     "productName": "KeyTone Studio",
+    "icon": "assets/logo.png",
+    "extraResources": [
+      {
+        "from": "node_modules/ffmpeg-static/ffmpeg.exe",
+        "to": "ffmpeg/bin/ffmpeg.exe"
+      },
+      {
+        "from": "..\\..\\public\\logo.png",
+        "to": "assets/logo.png"
+      }
+    ],
     "files": [
       "main.js",
       "preload.js",

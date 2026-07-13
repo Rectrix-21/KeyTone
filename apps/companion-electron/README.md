@@ -5,12 +5,9 @@ Desktop companion app for Windows + macOS. Runs Demucs locally and exposes a loc
 ## Prereqs
 
 - Node.js (LTS)
-- Python 3.10+
-- Demucs CLI
 
-```bash
-pip install demucs
-```
+Python and Demucs are installed automatically from inside the app with the
+"Install AI Engine" button.
 
 ## Run locally
 
@@ -20,11 +17,10 @@ npm install
 npm run dev
 ```
 
-If the app says Demucs is missing, set this before launching:
+If automatic install fails, install Python 3.10+ and rerun the in-app install.
 
-```bash
-set DEMUCS_CMD=python -m demucs
-```
+The app also auto-repairs missing runtime packages (like torchcodec) during
+extraction and retries automatically.
 
 ## Build installers
 
@@ -52,3 +48,5 @@ Installers are named:
 - In packaged builds, output files are stored under the app userData directory.
 - In dev, output files are under apps/companion-electron/output.
 - The app auto-starts on login and minimizes to the system tray.
+- You can choose which stems to export inside the app UI.
+- The app tries `demucs` first and falls back to `python -m demucs` if needed.

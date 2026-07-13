@@ -39,8 +39,9 @@ const FEATURE_CARDS: HubFeatureCard[] = [
   },
   {
     href: "/extract",
-    title: "MIDI Tools",
-    description: "Stem extraction and MIDI generation pipelines in one page.",
+    title: "Stem and MIDI Extraction",
+    description:
+      "Extract MIDI in-browser and download the desktop app for stem separation.",
     group: "create",
   },
   {

@@ -14,8 +14,9 @@ const LANDING_FEATURES = [
     href: "/chords",
   },
   {
-    title: "Stem and Midi Extraction",
-    description: "Split tracks into focused production stems.",
+    title: "Stem and MIDI Extraction",
+    description:
+      "Extract MIDI in the browser, then download the desktop app for stems.",
     label: "SE",
     href: "/extract",
   },
