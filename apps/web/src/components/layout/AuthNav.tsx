@@ -1,46 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { createClient, getSupabaseEnvError } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { useCurrentUser } from "@/lib/hooks/useCurrentUser";
+import { CreditsPill } from "@/components/layout/CreditsPill";
+import { ProfileMenu } from "@/components/layout/ProfileMenu";
 
 export function AuthNav() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [ready, setReady] = useState(false);
   const router = useRouter();
-
-  useEffect(() => {
-    const envError = getSupabaseEnvError();
-    if (envError) {
-      setReady(true);
-      setIsAuthenticated(false);
-      return;
-    }
-
-    const supabase = createClient();
-
-    void supabase.auth.getSession().then(({ data }) => {
-      setIsAuthenticated(Boolean(data.session));
-      setReady(true);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(Boolean(session));
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
+  const {
+    ready,
+    isAuthenticated,
+    userId,
+    email,
+    userMetadata,
+    me,
+    meLoading,
+    updateProfile,
+    signOut,
+    deleteAccount,
+  } = useCurrentUser();
 
   const onLogout = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    setIsAuthenticated(false);
+    await signOut();
     router.push("/login");
+    router.refresh();
+  };
+
+  const onAccountDeleted = async () => {
+    router.push("/");
     router.refresh();
   };
 
@@ -56,13 +44,16 @@ export function AuthNav() {
           <Link href="/dashboard" className="hover:text-cyan-200">
             Dashboard
           </Link>
-          <button
-            type="button"
-            onClick={onLogout}
-            className="cyber-btn whitespace-nowrap px-2.5 py-1.5 sm:px-3"
-          >
-            Logout
-          </button>
+          <CreditsPill me={me} loading={meLoading} />
+          <ProfileMenu
+            userId={userId}
+            email={email}
+            userMetadata={userMetadata}
+            updateProfile={updateProfile}
+            deleteAccount={deleteAccount}
+            onLogout={onLogout}
+            onAccountDeleted={onAccountDeleted}
+          />
         </>
       ) : (
         <>

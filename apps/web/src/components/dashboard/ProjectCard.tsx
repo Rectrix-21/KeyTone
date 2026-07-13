@@ -8,6 +8,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { Lock } from "lucide-react";
 import {
   ExtractionStem,
   MidiPreviewNote,
@@ -42,6 +43,7 @@ interface ProjectCardProps {
   altering?: boolean;
   cancelling?: boolean;
   deleting?: boolean;
+  isProUser?: boolean;
 }
 
 const KEY_PRESETS = [
@@ -77,6 +79,16 @@ const STYLE_PRESETS = [
   { value: "groove", label: "Groove" },
   { value: "cinematic", label: "Cinematic" },
 ] as const;
+
+// Keep in sync with STANDARD_VARIATION_INTENTS / STANDARD_VARIATION_STYLES
+// in apps/api/app/routers/projects.py.
+const STANDARD_TIER_INTENTS = new Set<VariationIntent>([
+  "catchier",
+  "richer",
+  "smoother",
+  "emotional",
+]);
+const STANDARD_TIER_STYLES = new Set<VariationStyle>(["auto", "lift"]);
 
 const INTENT_PRESETS: Array<{ value: VariationIntent; label: string }> = [
   { value: "richer", label: "Make richer" },
@@ -1035,6 +1047,7 @@ const ProjectCardComponent = ({
   altering = false,
   cancelling = false,
   deleting = false,
+  isProUser = false,
 }: ProjectCardProps) => {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [selectedLane, setSelectedLane] = useState<"full" | MidiLane>("full");
@@ -1324,7 +1337,7 @@ const ProjectCardComponent = ({
       ? "MIDI Variation"
       : project.feature === "starter"
         ? "Track Starter"
-        : "Stem and Midi Extraction";
+        : "Stem and MIDI Extraction";
   const starterExplanation =
     project.feature === "starter" &&
     typeof project.options?.starter_explanation === "string"
@@ -1885,28 +1898,43 @@ const ProjectCardComponent = ({
             <div>
               <p className="text-xs text-foreground/60">Intent</p>
               <div className="mt-1 flex gap-2 overflow-x-auto pb-1">
-                {INTENT_PRESETS.map((preset) => (
-                  <button
-                    key={preset.value}
-                    type="button"
-                    onMouseEnter={() => setHoveredIntent(preset.value)}
-                    onMouseLeave={() => setHoveredIntent(null)}
-                    onFocus={() => setHoveredIntent(preset.value)}
-                    onBlur={() => setHoveredIntent(null)}
-                    onClick={() => setVariationLocalIntent(preset.value)}
-                    className={`shrink-0 rounded-full border px-3 py-1.5 text-xs tracking-wide transition-all duration-200 ${
-                      variationLocalIntent === preset.value
-                        ? "scale-[1.03] border-cyan-300/55 bg-cyan-500/18 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.2)]"
-                        : "border-cyan-700/40 bg-black/30 text-foreground/70 hover:scale-[1.02] hover:border-cyan-500/55 hover:bg-cyan-500/10 hover:text-cyan-100"
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
+                {INTENT_PRESETS.map((preset) => {
+                  const locked =
+                    !isProUser && !STANDARD_TIER_INTENTS.has(preset.value);
+                  return (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      disabled={locked}
+                      onMouseEnter={() => setHoveredIntent(preset.value)}
+                      onMouseLeave={() => setHoveredIntent(null)}
+                      onFocus={() => setHoveredIntent(preset.value)}
+                      onBlur={() => setHoveredIntent(null)}
+                      onClick={() =>
+                        !locked && setVariationLocalIntent(preset.value)
+                      }
+                      className={`flex shrink-0 items-center gap-1 rounded-full border px-3 py-1.5 text-xs tracking-wide transition-all duration-200 ${
+                        locked
+                          ? "cursor-not-allowed border-cyan-800/30 bg-black/20 text-foreground/35"
+                          : variationLocalIntent === preset.value
+                            ? "scale-[1.03] border-cyan-300/55 bg-cyan-500/18 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.2)]"
+                            : "border-cyan-700/40 bg-black/30 text-foreground/70 hover:scale-[1.02] hover:border-cyan-500/55 hover:bg-cyan-500/10 hover:text-cyan-100"
+                      }`}
+                    >
+                      {locked ? <Lock className="h-3 w-3" /> : null}
+                      {preset.label}
+                    </button>
+                  );
+                })}
               </div>
               <p className="mt-2 rounded-md border border-cyan-700/30 bg-black/35 px-3 py-2 text-[11px] text-foreground/70">
                 {intentPreviewDescription}
               </p>
+              {!isProUser ? (
+                <p className="mt-1.5 text-[11px] text-fuchsia-300/80">
+                  Get Pro for advanced selections
+                </p>
+              ) : null}
             </div>
 
             <div>
@@ -2015,21 +2043,36 @@ const ProjectCardComponent = ({
             <div>
               <p className="text-xs text-foreground/60">Style</p>
               <div className="mt-1 flex gap-2 overflow-x-auto pb-1">
-                {STYLE_PRESETS.map((preset) => (
-                  <button
-                    key={preset.value}
-                    type="button"
-                    onClick={() => setVariationLocalStyle(preset.value)}
-                    className={`shrink-0 rounded-full border px-3 py-1.5 text-xs tracking-wide transition-all duration-200 ${
-                      variationLocalStyle === preset.value
-                        ? "scale-[1.03] border-cyan-300/55 bg-cyan-500/18 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.2)]"
-                        : "border-cyan-700/40 bg-black/30 text-foreground/70 hover:scale-[1.02] hover:border-cyan-500/55 hover:bg-cyan-500/10 hover:text-cyan-100"
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
+                {STYLE_PRESETS.map((preset) => {
+                  const locked =
+                    !isProUser && !STANDARD_TIER_STYLES.has(preset.value);
+                  return (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      disabled={locked}
+                      onClick={() =>
+                        !locked && setVariationLocalStyle(preset.value)
+                      }
+                      className={`flex shrink-0 items-center gap-1 rounded-full border px-3 py-1.5 text-xs tracking-wide transition-all duration-200 ${
+                        locked
+                          ? "cursor-not-allowed border-cyan-800/30 bg-black/20 text-foreground/35"
+                          : variationLocalStyle === preset.value
+                            ? "scale-[1.03] border-cyan-300/55 bg-cyan-500/18 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.2)]"
+                            : "border-cyan-700/40 bg-black/30 text-foreground/70 hover:scale-[1.02] hover:border-cyan-500/55 hover:bg-cyan-500/10 hover:text-cyan-100"
+                      }`}
+                    >
+                      {locked ? <Lock className="h-3 w-3" /> : null}
+                      {preset.label}
+                    </button>
+                  );
+                })}
               </div>
+              {!isProUser ? (
+                <p className="mt-1.5 text-[11px] text-fuchsia-300/80">
+                  Get Pro for advanced selections
+                </p>
+              ) : null}
             </div>
 
             <div>

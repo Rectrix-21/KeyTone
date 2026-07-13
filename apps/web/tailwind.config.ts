@@ -14,6 +14,15 @@ const config: Config = {
         success: "hsl(144 70% 45%)",
         danger: "hsl(0 72% 55%)",
       },
+      keyframes: {
+        "fade-in": {
+          "0%": { opacity: "0", transform: "translateY(-4px) scale(0.98)" },
+          "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
+      },
+      animation: {
+        "fade-in": "fade-in 150ms ease-out",
+      },
     },
   },
   plugins: [],

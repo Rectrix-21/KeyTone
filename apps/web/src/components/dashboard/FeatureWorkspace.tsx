@@ -2,7 +2,6 @@
 
 import {
   type CSSProperties,
-  type ChangeEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -76,7 +75,6 @@ export type FeatureRoute =
   | "extract"
   | "chords"
   | "generator";
-type LocalCompanionStatus = "checking" | "available" | "unavailable";
 type MetronomeSound = "tick" | "hats" | "kick";
 type FeatureClearCutoffs = Partial<Record<ProjectFeature, string>>;
 type SpotifySearchCacheEntry = {
@@ -149,7 +147,7 @@ const STARTER_LOADING_STEPS = [
 const EMPTY_GENERATING_TARGETS: string[] = [];
 
 const CREATE_SUBSECTIONS: Array<{ tab: CreateSubTab; label: string }> = [
-  { tab: "extraction", label: "Stem and Midi Extraction" },
+  { tab: "extraction", label: "Stem and MIDI Extraction" },
   { tab: "variation", label: "Chord Improver" },
   { tab: "starter", label: "Track Starter Generator" },
 ];
@@ -176,7 +174,7 @@ const FEATURE_ROUTE_LABELS: Record<FeatureRoute, string> = {
   analyzer: "Track Analyzer",
   similar: "Similar Songs",
   bpm: "BPM Finder and Tapper",
-  extract: "MIDI Tools",
+  extract: "Stem and MIDI Extraction",
   chords: "Chord Improver",
   generator: "Track Generator",
 };
@@ -462,17 +460,6 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
   const [discoverSubTab, setDiscoverSubTab] = useState<DiscoverSubTab>(
     initialTabState.discoverSubTab,
   );
-  const [extractStems, setExtractStems] = useState<ExtractionStem[]>([]);
-  const [localCompanionStatus, setLocalCompanionStatus] =
-    useState<LocalCompanionStatus>("checking");
-  const [localProcessing, setLocalProcessing] = useState(false);
-  const [localErrorMessage, setLocalErrorMessage] = useState<string | null>(
-    null,
-  );
-  const [localResultPath, setLocalResultPath] = useState<string | null>(null);
-  const [localInstallModalOpen, setLocalInstallModalOpen] = useState(false);
-  const [localSelectedFile, setLocalSelectedFile] = useState<File | null>(null);
-  const localFileInputRef = useRef<HTMLInputElement | null>(null);
   const [starterGenerating, setStarterGenerating] = useState(false);
   const [starterLoadingStepIndex, setStarterLoadingStepIndex] = useState(0);
   const [starterGenre, setStarterGenre] = useState("rnb");
@@ -649,45 +636,6 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     if (tab !== "discover") {
       setLastCreateSubTab(tab);
     }
-  }, [tab]);
-
-  useEffect(() => {
-    if (tab !== "extraction") {
-      return;
-    }
-
-    let cancelled = false;
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 1200);
-
-    setLocalCompanionStatus("checking");
-
-    fetch(`${LOCAL_COMPANION_URL}/health`, { signal: controller.signal })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => {
-        if (cancelled) {
-          return;
-        }
-        if (data && data.status === "ok") {
-          setLocalCompanionStatus("available");
-        } else {
-          setLocalCompanionStatus("unavailable");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLocalCompanionStatus("unavailable");
-        }
-      })
-      .finally(() => {
-        window.clearTimeout(timeoutId);
-      });
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-      window.clearTimeout(timeoutId);
-    };
   }, [tab]);
 
   useEffect(() => {
@@ -1465,71 +1413,6 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     };
   }, [activePollingProjectIds, token]);
 
-  const runLocalExtraction = useCallback(async (file: File) => {
-    setLocalProcessing(true);
-    setLocalErrorMessage(null);
-    setLocalResultPath(null);
-
-    const form = new FormData();
-    form.append("file", file);
-
-    try {
-      const response = await fetch(`${LOCAL_COMPANION_URL}/extract`, {
-        method: "POST",
-        body: form,
-      });
-
-      if (!response.ok) {
-        throw new Error("Local extraction failed");
-      }
-
-      const payload = await response.json().catch(() => null);
-      const outputDir =
-        payload && typeof payload.outputDir === "string"
-          ? payload.outputDir
-          : null;
-      setLocalResultPath(outputDir);
-    } catch (extractError) {
-      setLocalCompanionStatus("unavailable");
-      setLocalErrorMessage(
-        extractError instanceof Error
-          ? extractError.message
-          : "Local extraction failed",
-      );
-    } finally {
-      setLocalProcessing(false);
-    }
-  }, []);
-
-  const handleLocalFileSelected = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) {
-        return;
-      }
-
-      event.target.value = "";
-      setLocalSelectedFile(file);
-      void runLocalExtraction(file);
-    },
-    [runLocalExtraction],
-  );
-
-  const handleLocalExtractClick = useCallback(() => {
-    if (localCompanionStatus !== "available") {
-      setLocalInstallModalOpen(true);
-      return;
-    }
-
-    if (localProcessing) {
-      return;
-    }
-
-    setLocalErrorMessage(null);
-    setLocalResultPath(null);
-    localFileInputRef.current?.click();
-  }, [localCompanionStatus, localProcessing]);
-
   const handleUpload = useCallback(
     async (file: File) => {
       if (!token) {
@@ -1589,14 +1472,9 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
           setError("Use Track Starter Generator controls for this tab.");
           return;
         }
-        if (tab === "extraction" && extractStems.length === 0) {
-          setError("Select at least one stem.");
-          return;
-        }
 
         const accepted = await uploadProject(file, token, {
           feature: tab,
-          extractStems,
           variationTarget,
         });
         const project = await getProject(accepted.project_id, token);
@@ -1619,166 +1497,75 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
         setUploading(false);
       }
     },
-    [extractStems, me, tab, token, variationTarget],
+    [me, tab, token, variationTarget],
   );
 
-  const handleLocalFallbackToCloud = useCallback(() => {
-    if (!localSelectedFile) {
+  const handleGenerateStarters = useCallback(async () => {
+    if (!token) {
+      setError("Sign in is required to generate starter ideas.");
       return;
     }
-    void handleUpload(localSelectedFile);
-  }, [handleUpload, localSelectedFile]);
 
-  const visibleProjects = useMemo(
-    () =>
-      tab === "discover"
-        ? []
-        : projects.filter((project) => project.feature === tab),
-    [projects, tab],
-  );
+    setStarterGenerating(true);
+    setError(null);
 
-  const toggleExtractStem = useCallback((stem: ExtractionStem) => {
-    setExtractStems((previous) =>
-      previous.includes(stem)
-        ? previous.filter((value) => value !== stem)
-        : [...previous, stem],
-    );
-  }, []);
-
-  const handleGenerateStemMidi = useCallback(
-    async (
-      projectId: string,
-      target: "melody" | "chord" | "bass" | "piano" | "guitar",
-    ) => {
-      if (!token) {
-        return;
-      }
-
-      setGeneratingByProject((previous) => {
-        const existing = previous[projectId] ?? [];
-        if (existing.includes(target)) {
-          return previous;
-        }
-        return {
-          ...previous,
-          [projectId]: [...existing, target],
-        };
+    try {
+      const response = await generateTrackStarterIdeas(token, {
+        genre: starterGenre,
+        mood: starterMood,
+        bpm: clampBpm(Number.parseFloat(starterBpm)),
+        key: starterKey.trim() || undefined,
+        complexity: starterComplexity,
+        bars: starterBars,
+        referenceDescription: starterReference.trim() || undefined,
       });
 
-      try {
-        await generateStemMidi(projectId, target, token);
+      setStarterLoadingStepIndex(0);
+
+      if (response.project_ids.length > 0) {
+        const refreshedProjects = await listProjects(token);
         setProjects((previous) =>
-          previous.map((project) => {
-            if (project.id !== projectId) {
-              return project;
-            }
-
-            return {
-              ...project,
-              status: "processing",
-              options: {
-                ...(project.options ?? {}),
-                processing_progress: {
-                  percent: 45,
-                  label: `Generating ${target} MIDI`,
-                },
-              },
-            };
-          }),
-        );
-      } catch (generationError) {
-        setError(
-          generationError instanceof Error
-            ? generationError.message
-            : "Failed to start MIDI generation",
-        );
-      } finally {
-        setGeneratingByProject((previous) => ({
-          ...previous,
-          [projectId]: (previous[projectId] ?? []).filter(
-            (value) => value !== target,
-          ),
-        }));
-      }
-    },
-    [token],
-  );
-
-  const handleCancelProject = useCallback(
-    async (projectId: string) => {
-      if (!token) {
-        return;
-      }
-
-      setCancellingByProject((previous) => ({
-        ...previous,
-        [projectId]: true,
-      }));
-
-      try {
-        await cancelProject(projectId, token);
-        const updated = await getProject(projectId, token);
-        setProjects((previous) =>
-          previous.map((project) =>
-            project.id === projectId ? updated : project,
+          limitProjectHistory(
+            refreshedProjects.length > 0 ? refreshedProjects : previous,
           ),
         );
-        setMe((previous) =>
-          previous
-            ? {
-                ...previous,
-                remaining_credits: previous.unlimited_credits
-                  ? previous.remaining_credits
-                  : previous.remaining_credits + 1,
-              }
-            : previous,
-        );
-      } catch (cancelError) {
-        setError(
-          cancelError instanceof Error
-            ? cancelError.message
-            : "Failed to cancel project",
-        );
-      } finally {
-        setCancellingByProject((previous) => ({
-          ...previous,
-          [projectId]: false,
-        }));
       }
+    } catch (starterError) {
+      setError(
+        starterError instanceof Error
+          ? starterError.message
+          : "Failed to generate starter ideas",
+      );
+    } finally {
+      setStarterGenerating(false);
+    }
+  }, [
+    starterBars,
+    starterBpm,
+    starterComplexity,
+    starterGenre,
+    starterKey,
+    starterMood,
+    starterReference,
+    token,
+  ]);
+
+  const handleClearAnalyzedHistory = useCallback(() => {
+    setAnalyzerHistory([]);
+    setAnalyzerResult(null);
+    setAnalyzedFileName("");
+    setActiveAnalysisId(null);
+  }, []);
+
+  const handleSelectAnalyzedHistory = useCallback(
+    (entry: AnalyzedHistoryEntry) => {
+      setAnalyzerResult(entry.result);
+      setAnalyzedFileName(entry.fileName);
+      setActiveAnalysisId(entry.id);
+      setTab("discover");
+      setDiscoverSubTab("analyzer");
     },
-    [token],
-  );
-
-  const handleDeleteProject = useCallback(
-    async (projectId: string) => {
-      if (!token) {
-        return;
-      }
-
-      setDeletingByProject((previous) => ({
-        ...previous,
-        [projectId]: true,
-      }));
-
-      try {
-        await deleteProject(projectId, token);
-        setProjects((previous) =>
-          previous.filter((project) => project.id !== projectId),
-        );
-      } catch (deleteError) {
-        setError(
-          deleteError instanceof Error
-            ? deleteError.message
-            : "Failed to delete project",
-        );
-      } finally {
-        setDeletingByProject((previous) => ({
-          ...previous,
-          [projectId]: false,
-        }));
-      }
-    },
-    [token],
+    [],
   );
 
   const handleClearHistory = useCallback(async () => {
@@ -1786,6 +1573,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
       tab === "extraction" || tab === "variation" || tab === "starter"
         ? tab
         : null;
+
     if (!clearFeature) {
       return;
     }
@@ -1808,7 +1596,6 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
       [clearFeature]: clearedAt,
     }));
 
-    // Clear matching cards immediately so the UI never appears stuck.
     setProjects((previous) =>
       previous.filter((project) => project.feature !== clearFeature),
     );
@@ -1883,17 +1670,10 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
           creativity,
           token,
         );
-
-        const updated = await getProject(projectId, token);
-        setProjects((previous) =>
-          previous.map((project) =>
-            project.id === projectId ? updated : project,
-          ),
-        );
-      } catch (alterError) {
+      } catch (variationError) {
         setError(
-          alterError instanceof Error
-            ? alterError.message
+          variationError instanceof Error
+            ? variationError.message
             : "Failed to alter variation",
         );
       } finally {
@@ -1906,142 +1686,134 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     [token],
   );
 
-  const handleGenerateStarters = useCallback(async () => {
-    if (!token || !me) {
-      return;
-    }
-    if (!me.unlimited_credits && me.remaining_credits <= 0) {
-      setError("No credits left. Upgrade to continue.");
-      return;
-    }
+  const visibleProjects = useMemo(
+    () =>
+      tab === "discover"
+        ? []
+        : projects.filter((project) => project.feature === tab),
+    [projects, tab],
+  );
 
-    const parsedBpm = Number.parseFloat(starterBpm);
-    const bpm = Number.isFinite(parsedBpm) ? parsedBpm : 118;
+  const handleGenerateStemMidi = useCallback(
+    async (
+      projectId: string,
+      target: "melody" | "chord" | "bass" | "piano" | "guitar",
+    ) => {
+      if (!token) {
+        return;
+      }
 
-    setError(null);
-    setStarterGenerating(true);
-    try {
-      const accepted = await generateTrackStarterIdeas(token, {
-        genre: starterGenre,
-        mood: starterMood,
-        bpm,
-        key: starterKey.trim() || undefined,
-        complexity: starterComplexity,
-        bars: starterBars,
-        referenceDescription: starterReference,
+      setGeneratingByProject((previous) => {
+        const existing = previous[projectId] ?? [];
+        if (existing.includes(target)) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          [projectId]: [...existing, target],
+        };
       });
 
-      const generated = await Promise.all(
-        accepted.project_ids.map((projectId) => getProject(projectId, token)),
-      );
-      setProjects((previous) =>
-        limitProjectHistory([...generated, ...previous]),
-      );
-      setMe((previous) =>
-        previous
-          ? {
-              ...previous,
-              remaining_credits: previous.unlimited_credits
-                ? previous.remaining_credits
-                : Math.max(0, previous.remaining_credits - 1),
-            }
-          : previous,
-      );
-    } catch (starterError) {
-      setError(
-        starterError instanceof Error
-          ? starterError.message
-          : "Failed to generate starter ideas",
-      );
-    } finally {
-      setStarterGenerating(false);
-    }
-  }, [
-    me,
-    starterBars,
-    starterBpm,
-    starterComplexity,
-    starterGenre,
-    starterKey,
-    starterMood,
-    starterReference,
-    token,
-  ]);
-
-  const handleSelectAnalyzedHistory = useCallback(
-    (entry: AnalyzedHistoryEntry) => {
-      setAnalyzerResult(entry.result);
-      setAnalyzedFileName(entry.fileName);
-      setActiveAnalysisId(entry.id);
-    },
-    [],
-  );
-
-  const handleSelectAnalyzerSpotifyTrack = useCallback(
-    async (track: SpotifyTrackSummary) => {
-      if (!token || tab !== "discover" || discoverSubTab !== "analyzer") {
-        return;
-      }
-      if (uploading) {
-        return;
-      }
-
-      const selectedLabel = `${track.name} - ${track.artists.join(", ")}`;
-      setAnalyzerSearchQuery(selectedLabel);
-      setAnalyzerSearchError(null);
-      setAnalyzerSpotifyResults([]);
-
-      setError(null);
-      setUploading(true);
-      setAnalyzerResult(null);
-      setAnalyzedFileName(selectedLabel);
-      setAnalyzingStartedAt(Date.now());
-
       try {
-        const result = await analyzeDiscoverSpotifyTrack(
-          token,
-          track.externalUrl || track.id,
-        );
+        await generateStemMidi(projectId, target, token);
+        setProjects((previous) =>
+          previous.map((project) => {
+            if (project.id !== projectId) {
+              return project;
+            }
 
-        const historyEntry: AnalyzedHistoryEntry = {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          fileName: selectedLabel,
-          analyzedAt: new Date().toISOString(),
-          result,
-        };
-
-        setAnalyzerHistory((previous) =>
-          [historyEntry, ...previous].slice(0, MAX_HISTORY_ITEMS),
+            return {
+              ...project,
+              status: "processing",
+              options: {
+                ...(project.options ?? {}),
+                processing_progress: {
+                  percent: 45,
+                  label: `Generating ${target} MIDI`,
+                },
+              },
+            };
+          }),
         );
-        setActiveAnalysisId(historyEntry.id);
-        setAnalyzerResult(result);
-      } catch (analyzeError) {
+      } catch (generationError) {
         setError(
-          analyzeError instanceof Error
-            ? analyzeError.message
-            : "Track analysis failed",
+          generationError instanceof Error
+            ? generationError.message
+            : "Failed to start MIDI generation",
         );
       } finally {
-        setAnalyzingStartedAt(null);
-        setUploading(false);
+        setGeneratingByProject((previous) => ({
+          ...previous,
+          [projectId]: (previous[projectId] ?? []).filter(
+            (value) => value !== target,
+          ),
+        }));
       }
     },
-    [discoverSubTab, tab, token, uploading],
+    [token],
   );
 
-  const handleClearAnalyzedHistory = useCallback(() => {
-    const confirmed = window.confirm(
-      "Clear all analyzed history? This cannot be undone.",
-    );
-    if (!confirmed) {
-      return;
-    }
+  const handleCancelProject = useCallback(
+    async (projectId: string) => {
+      if (!token) {
+        return;
+      }
 
-    setAnalyzerHistory([]);
-    setAnalyzerResult(null);
-    setAnalyzedFileName("");
-    setActiveAnalysisId(null);
-  }, []);
+      setCancellingByProject((previous) => ({
+        ...previous,
+        [projectId]: true,
+      }));
+
+      try {
+        await cancelProject(projectId, token);
+      } catch (cancelError) {
+        setError(
+          cancelError instanceof Error
+            ? cancelError.message
+            : "Failed to cancel project",
+        );
+      } finally {
+        setCancellingByProject((previous) => ({
+          ...previous,
+          [projectId]: false,
+        }));
+      }
+    },
+    [token],
+  );
+
+  const handleDeleteProject = useCallback(
+    async (projectId: string) => {
+      if (!token) {
+        return;
+      }
+
+      setDeletingByProject((previous) => ({
+        ...previous,
+        [projectId]: true,
+      }));
+
+      try {
+        await deleteProject(projectId, token);
+        setProjects((previous) =>
+          previous.filter((project) => project.id !== projectId),
+        );
+      } catch (deleteError) {
+        setError(
+          deleteError instanceof Error
+            ? deleteError.message
+            : "Failed to delete project",
+        );
+      } finally {
+        setDeletingByProject((previous) => ({
+          ...previous,
+          [projectId]: false,
+        }));
+      }
+    },
+    [token],
+  );
 
   const handleSelectSpotifyTrack = useCallback(
     async (track: SpotifyTrackSummary) => {
@@ -2081,6 +1853,8 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     },
     [token],
   );
+
+  const handleSelectAnalyzerSpotifyTrack = handleSelectSpotifyTrack;
 
   const handleFindSimilarSongs = useCallback(async () => {
     if (!token) {
@@ -2327,95 +2101,50 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
 
       {tab === "extraction" ? (
         <>
-          <section className="mb-4 rounded-xl border border-cyan-500/20 bg-black/35 p-4">
-            <h2 className="text-sm font-medium text-cyan-100">
-              Stem selection
-            </h2>
-            <p className="mt-1 text-xs text-foreground/70">
-              Select stems to separate first. MIDI is generated later per stem
-              on demand.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(
-                ["bass", "drums", "other", "piano", "guitar", "vocals"] as const
-              ).map((stem) => (
-                <button
-                  key={stem}
-                  type="button"
-                  onClick={() => toggleExtractStem(stem)}
-                  className={`rounded-md border px-3 py-1.5 text-xs uppercase tracking-wide ${
-                    extractStems.includes(stem)
-                      ? "border-cyan-300/50 bg-cyan-500/15 text-cyan-100"
-                      : "border-cyan-700/40 bg-black/30 text-foreground/70"
-                  }`}
-                >
-                  {stem}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="mb-4 rounded-xl border border-cyan-500/20 bg-black/35 p-4">
+          <section className="mb-4 rounded-xl border border-cyan-500/20 bg-black/35 p-4 sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-200/85">
-                  Local High Quality
+                  Stem and MIDI Extraction
                 </p>
-                <h2 className="mt-1 text-sm font-medium text-cyan-100">
-                  {localCompanionStatus === "available"
-                    ? "High Quality Mode Available"
-                    : "Install KeyTone Studio"}
+                <h2 className="mt-1 text-sm font-medium text-cyan-100 sm:text-base">
+                  Drop audio to generate MIDI, or download the desktop app for
+                  stems.
                 </h2>
-                <p className="mt-1 text-xs text-foreground/70">
-                  Run Demucs locally for faster, higher quality stem extraction.
-                </p>
-                {localCompanionStatus === "checking" ? (
-                  <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-foreground/60">
-                    Checking for local app...
-                  </p>
-                ) : null}
               </div>
-              <button
-                type="button"
-                onClick={handleLocalExtractClick}
-                disabled={localProcessing}
-                className="rounded-md border border-cyan-300/55 bg-cyan-500/15 px-4 py-2 text-xs uppercase tracking-wide text-cyan-100 transition hover:border-cyan-200/70 hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {localProcessing
-                  ? "Processing locally..."
-                  : "Extract Stems (High Quality) ⚡"}
-              </button>
             </div>
 
-            <input
-              ref={localFileInputRef}
-              type="file"
-              accept=".mp3,.wav,.m4a,audio/*"
-              onChange={handleLocalFileSelected}
-              className="hidden"
+            <UploadDropzone
+              onFileAccepted={handleUpload}
+              mode="audio"
+              disabled={
+                uploading ||
+                !me ||
+                (!me.unlimited_credits && (me.remaining_credits ?? 0) <= 0)
+              }
+              message="Drop MP3/WAV/M4A up to 25MB, or click to upload."
+              className="mt-3 border-cyan-300/55 bg-black/35"
             />
 
-            {localResultPath ? (
-              <p className="mt-3 text-xs text-foreground/70">
-                Local extraction finished. Files saved to: {localResultPath}
-              </p>
-            ) : null}
-
-            {localErrorMessage ? (
-              <div className="mt-3 rounded-lg border border-rose-500/35 bg-rose-500/10 p-3">
-                <p className="text-xs text-rose-100">{localErrorMessage}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleLocalFallbackToCloud}
-                    disabled={uploading || localProcessing}
-                    className="rounded-md border border-cyan-300/50 bg-cyan-500/15 px-3 py-1.5 text-[11px] uppercase tracking-wide text-cyan-100 transition hover:border-cyan-200/70 hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Use Cloud Processing
-                  </button>
-                </div>
-              </div>
-            ) : null}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-foreground/70">
+              <span>Need stems? Download KeyTone Studio:</span>
+              <a
+                href={LOCAL_COMPANION_DOWNLOADS.windows}
+                target="_blank"
+                rel="noreferrer"
+                className="text-cyan-100 underline decoration-cyan-300/60 underline-offset-2"
+              >
+                Windows
+              </a>
+              <a
+                href={LOCAL_COMPANION_DOWNLOADS.mac}
+                target="_blank"
+                rel="noreferrer"
+                className="text-cyan-100 underline decoration-cyan-300/60 underline-offset-2"
+              >
+                macOS
+              </a>
+            </div>
           </section>
         </>
       ) : tab === "variation" ? (
@@ -2720,53 +2449,6 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
           >
             {clearingHistory ? "Clearing..." : `Clear ${tab} history`}
           </button>
-        </div>
-      ) : null}
-
-      {localInstallModalOpen && tab === "extraction" ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-cyan-500/30 bg-black/95 p-5">
-            <h3 className="text-lg font-semibold text-cyan-100">
-              Install KeyTone Studio
-            </h3>
-            <p className="mt-2 text-sm text-foreground/70">
-              High Quality Mode runs Demucs on your machine. Install the local
-              companion app, then refresh this page.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <a
-                href={LOCAL_COMPANION_DOWNLOADS.windows}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-md border border-cyan-300/55 bg-cyan-500/15 px-3 py-1.5 text-[11px] uppercase tracking-wide text-cyan-100 transition hover:border-cyan-200/70 hover:bg-cyan-500/25"
-              >
-                Download for Windows
-              </a>
-              <a
-                href={LOCAL_COMPANION_DOWNLOADS.mac}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-md border border-cyan-300/55 bg-cyan-500/15 px-3 py-1.5 text-[11px] uppercase tracking-wide text-cyan-100 transition hover:border-cyan-200/70 hover:bg-cyan-500/25"
-              >
-                Download for macOS
-              </a>
-            </div>
-            <ol className="mt-3 space-y-2 text-xs text-foreground/70">
-              <li>1. Install Python 3.10+ and Demucs: `pip install demucs`.</li>
-              <li>2. Download and install KeyTone Studio.</li>
-              <li>3. Open KeyTone Studio and keep it running.</li>
-              <li>4. Come back here and click High Quality again.</li>
-            </ol>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setLocalInstallModalOpen(false)}
-                className="rounded-md border border-cyan-300/50 bg-cyan-500/15 px-4 py-2 text-xs uppercase tracking-wide text-cyan-100 transition hover:border-cyan-200/70 hover:bg-cyan-500/25"
-              >
-                Close
-              </button>
-            </div>
-          </div>
         </div>
       ) : null}
 
@@ -3955,6 +3637,9 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
               altering={Boolean(alteringByProject[project.id])}
               cancelling={Boolean(cancellingByProject[project.id])}
               deleting={Boolean(deletingByProject[project.id])}
+              isProUser={Boolean(
+                me?.is_admin || me?.subscription_status === "active",
+              )}
             />
           ))}
           {visibleProjects.length === 0 ? (

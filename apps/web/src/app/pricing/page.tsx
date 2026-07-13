@@ -139,7 +139,7 @@ export default function PricingPage() {
             </li>
             <li className="flex gap-2">
               <span className="text-cyan-300">•</span>
-              <span>5 credits per month for Create tools</span>
+              <span>5 credits per week for Create tools</span>
             </li>
             <li className="flex gap-2">
               <span className="text-cyan-300">•</span>
