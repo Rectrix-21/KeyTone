@@ -60,10 +60,10 @@ const LOCAL_COMPANION_URL = "http://localhost:5000";
 const LOCAL_COMPANION_DOWNLOADS = {
   windows:
     process.env.NEXT_PUBLIC_KEYTONE_STUDIO_WIN_URL ??
-    "/downloads/KeyTone-Studio-Setup.exe",
+    "https://github.com/Rectrix-21/KeyTone/releases/download/studio-v1/KeyTone-Studio-Setup.exe",
   mac:
     process.env.NEXT_PUBLIC_KEYTONE_STUDIO_MAC_URL ??
-    "/downloads/KeyTone-Studio.dmg",
+    "https://github.com/Rectrix-21/KeyTone/releases/download/studio-v1/KeyTone-Studio.dmg",
 };
 type DashboardTab = "extraction" | "variation" | "starter" | "discover";
 type CreateSubTab = Exclude<DashboardTab, "discover">;
@@ -430,6 +430,9 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
   );
   const [me, setMe] = useState<UserSummary | null>(
     () => initialBootstrap?.me ?? null,
+  );
+  const isProUser = Boolean(
+    me?.is_admin || me?.subscription_status === "active",
   );
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -2194,6 +2197,11 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
               Each idea includes chords-only MIDI so you can build the rest of
               the track your way.
             </p>
+            {!isProUser ? (
+              <p className="mt-2 text-[11px] text-fuchsia-300/80">
+                Get Pro to access fresh and experimental versions
+              </p>
+            ) : null}
 
             <div className="mt-5 space-y-4">
               <div>
@@ -3637,9 +3645,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
               altering={Boolean(alteringByProject[project.id])}
               cancelling={Boolean(cancellingByProject[project.id])}
               deleting={Boolean(deletingByProject[project.id])}
-              isProUser={Boolean(
-                me?.is_admin || me?.subscription_status === "active",
-              )}
+              isProUser={isProUser}
             />
           ))}
           {visibleProjects.length === 0 ? (
