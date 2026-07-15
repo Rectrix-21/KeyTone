@@ -10,6 +10,7 @@ import {
   type MouseEvent,
 } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { broadcastCreditsDelta } from "@/lib/hooks/creditsSync";
 import {
   alterVariationMidi,
   analyzeDiscoverSpotifyTrack,
@@ -138,7 +139,7 @@ const ANALYZING_STEPS = [
 ] as const;
 const SIMILAR_LOADING_STEPS = [
   "Resolving source metadata",
-  "Scanning Last.fm neighbor graph",
+  "Scanning the similarity graph",
   "Enriching tracks with tags",
   "Ranking by relevance and vibe",
 ] as const;
@@ -482,6 +483,12 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
   const [analyzerResult, setAnalyzerResult] =
     useState<TrackAnalyzerResult | null>(null);
   const [analyzedFileName, setAnalyzedFileName] = useState<string>("");
+  const [analyzedAudioUrl, setAnalyzedAudioUrl] = useState<string | null>(
+    null,
+  );
+  const [analyzedSpotifyEmbedId, setAnalyzedSpotifyEmbedId] = useState<
+    string | null
+  >(null);
   const [analyzerHistory, setAnalyzerHistory] = useState<
     AnalyzedHistoryEntry[]
   >([]);
@@ -540,6 +547,8 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
   const metronomeAudioContextRef = useRef<AudioContext | null>(null);
   const metronomeNoiseBufferRef = useRef<AudioBuffer | null>(null);
   const metronomeTimerRef = useRef<number | null>(null);
+  const metronomeVolumeRef = useRef(metronomeVolume);
+  const metronomeBeatIndexRef = useRef(0);
   const tapTempoTimestampsRef = useRef<number[]>([]);
   const bpmAnimationFrameRef = useRef<number | null>(null);
   const variationTarget: VariationTarget = "full";
@@ -873,6 +882,10 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     };
   }, [discoverSubTab, spotifyQuery, spotifySearchLocked, tab, token]);
 
+  useEffect(() => {
+    metronomeVolumeRef.current = metronomeVolume;
+  }, [metronomeVolume]);
+
   const clearMetronomeTimer = useCallback(() => {
     if (metronomeTimerRef.current !== null) {
       window.clearInterval(metronomeTimerRef.current);
@@ -917,7 +930,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
   }, []);
 
   const playMetronomeHit = useCallback(
-    (context: AudioContext, sound: MetronomeSound) => {
+    (context: AudioContext, sound: MetronomeSound, isAccent: boolean) => {
       const now = context.currentTime;
 
       if (sound === "kick") {
@@ -926,11 +939,14 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
         oscillator.connect(gain);
         gain.connect(context.destination);
         oscillator.type = "sine";
-        oscillator.frequency.setValueAtTime(165, now);
-        oscillator.frequency.exponentialRampToValueAtTime(52, now + 0.14);
+        oscillator.frequency.setValueAtTime(isAccent ? 196 : 165, now);
+        oscillator.frequency.exponentialRampToValueAtTime(
+          isAccent ? 66 : 52,
+          now + 0.14,
+        );
         gain.gain.setValueAtTime(0.0001, now);
         gain.gain.exponentialRampToValueAtTime(
-          0.9 * metronomeVolume,
+          Math.max(0.0001, (isAccent ? 1.0 : 0.9) * metronomeVolumeRef.current),
           now + 0.006,
         );
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
@@ -950,11 +966,11 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
 
         const highPass = context.createBiquadFilter();
         highPass.type = "highpass";
-        highPass.frequency.setValueAtTime(6800, now);
+        highPass.frequency.setValueAtTime(isAccent ? 8200 : 6800, now);
 
         const bandPass = context.createBiquadFilter();
         bandPass.type = "bandpass";
-        bandPass.frequency.setValueAtTime(9800, now);
+        bandPass.frequency.setValueAtTime(isAccent ? 12000 : 9800, now);
         bandPass.Q.setValueAtTime(0.9, now);
 
         const gain = context.createGain();
@@ -965,7 +981,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
 
         gain.gain.setValueAtTime(0.0001, now);
         gain.gain.exponentialRampToValueAtTime(
-          0.42 * metronomeVolume,
+          Math.max(0.0001, (isAccent ? 0.52 : 0.42) * metronomeVolumeRef.current),
           now + 0.0015,
         );
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.055);
@@ -975,22 +991,24 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
         return;
       }
 
+      // "tick" - FL Studio-style two-tone electronic click: a brighter,
+      // higher-pitched ping on the downbeat and a lower ping on other beats.
       const oscillator = context.createOscillator();
       const gain = context.createGain();
       oscillator.connect(gain);
       gain.connect(context.destination);
-      oscillator.type = "triangle";
-      oscillator.frequency.setValueAtTime(1500, now);
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(isAccent ? 2200 : 1500, now);
       gain.gain.setValueAtTime(0.0001, now);
       gain.gain.exponentialRampToValueAtTime(
-        0.34 * metronomeVolume,
-        now + 0.003,
+        Math.max(0.0001, (isAccent ? 0.42 : 0.34) * metronomeVolumeRef.current),
+        now + 0.002,
       );
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
       oscillator.start(now);
-      oscillator.stop(now + 0.07);
+      oscillator.stop(now + 0.06);
     },
-    [metronomeVolume],
+    [],
   );
 
   const commitBpmFinderInput = useCallback(
@@ -1084,8 +1102,11 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
       }
 
       const intervalMs = Math.max(120, Math.round((60 / bpmFinderBpm) * 1000));
+      metronomeBeatIndexRef.current = 0;
       const runBeat = () => {
-        playMetronomeHit(context, metronomeSound);
+        const isAccent = metronomeBeatIndexRef.current % 4 === 0;
+        metronomeBeatIndexRef.current += 1;
+        playMetronomeHit(context, metronomeSound, isAccent);
         setMetronomePulse((previous) => previous + 1);
       };
 
@@ -1447,6 +1468,15 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     };
   }, [activePollingProjectIds, token]);
 
+  const applyAnalyzedAudioUrl = useCallback((nextUrl: string | null) => {
+    setAnalyzedAudioUrl((previous) => {
+      if (previous && previous.startsWith("blob:")) {
+        URL.revokeObjectURL(previous);
+      }
+      return nextUrl;
+    });
+  }, []);
+
   const handleUpload = useCallback(
     async (file: File) => {
       if (!token) {
@@ -1458,6 +1488,8 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
         setAnalyzerResult(null);
         setAnalyzedFileName(file.name);
         setAnalyzingStartedAt(Date.now());
+        setAnalyzedSpotifyEmbedId(null);
+        applyAnalyzedAudioUrl(URL.createObjectURL(file));
         try {
           const { analyzeTrackInBrowser } =
             await import("@/lib/audio/trackAnalyzer");
@@ -1523,6 +1555,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
               }
             : previous,
         );
+        broadcastCreditsDelta(-1);
       } catch (uploadError) {
         setError(
           uploadError instanceof Error ? uploadError.message : "Upload failed",
@@ -1531,7 +1564,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
         setUploading(false);
       }
     },
-    [me, tab, token, variationTarget],
+    [applyAnalyzedAudioUrl, me, tab, token, variationTarget],
   );
 
   const onExtractionFileAccepted = useCallback(
@@ -1588,6 +1621,17 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
             ? applyProjectHistoryPolicy(refreshedProjects, featureClearCutoffs)
             : previous,
         );
+        setMe((previous) =>
+          previous
+            ? {
+                ...previous,
+                remaining_credits: previous.unlimited_credits
+                  ? previous.remaining_credits
+                  : Math.max(0, previous.remaining_credits - 1),
+              }
+            : previous,
+        );
+        broadcastCreditsDelta(-1);
       }
     } catch (starterError) {
       setError(
@@ -1615,17 +1659,21 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     setAnalyzerResult(null);
     setAnalyzedFileName("");
     setActiveAnalysisId(null);
-  }, []);
+    applyAnalyzedAudioUrl(null);
+    setAnalyzedSpotifyEmbedId(null);
+  }, [applyAnalyzedAudioUrl]);
 
   const handleSelectAnalyzedHistory = useCallback(
     (entry: AnalyzedHistoryEntry) => {
       setAnalyzerResult(entry.result);
       setAnalyzedFileName(entry.fileName);
       setActiveAnalysisId(entry.id);
+      applyAnalyzedAudioUrl(null);
+      setAnalyzedSpotifyEmbedId(null);
       setTab("discover");
       setDiscoverSubTab("analyzer");
     },
-    [],
+    [applyAnalyzedAudioUrl],
   );
 
   const handleClearHistory = useCallback(async () => {
@@ -1830,6 +1878,12 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
 
       try {
         await cancelProject(projectId, token);
+        setMe((previous) =>
+          previous && !previous.unlimited_credits
+            ? { ...previous, remaining_credits: previous.remaining_credits + 1 }
+            : previous,
+        );
+        broadcastCreditsDelta(1);
       } catch (cancelError) {
         setError(
           cancelError instanceof Error
@@ -1908,7 +1962,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
         setSelectedTrackContextError(
           contextError instanceof Error
             ? contextError.message
-            : "Last.fm context lookup failed",
+            : "Track context lookup failed",
         );
       } finally {
         setSelectedTrackContextLoading(false);
@@ -1917,7 +1971,59 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     [token],
   );
 
-  const handleSelectAnalyzerSpotifyTrack = handleSelectSpotifyTrack;
+  const handleAnalyzeSpotifyTrack = useCallback(
+    async (track: SpotifyTrackSummary) => {
+      if (!token) {
+        setError("Sign in is required to analyze Spotify tracks.");
+        return;
+      }
+
+      const label = `${track.name} - ${track.artists.join(", ")}`;
+      setError(null);
+      setUploading(true);
+      setAnalyzerResult(null);
+      setAnalyzedFileName(label);
+      setAnalyzingStartedAt(Date.now());
+      setAnalyzerSpotifyResults([]);
+      setAnalyzerSearchQuery("");
+      applyAnalyzedAudioUrl(track.previewUrl ?? null);
+      setAnalyzedSpotifyEmbedId(
+        track.previewUrl
+          ? null
+          : track.id || extractSpotifyTrackIdFromUrl(track.externalUrl),
+      );
+
+      try {
+        const result = await analyzeDiscoverSpotifyTrack(
+          token,
+          track.externalUrl || track.id,
+        );
+
+        const historyEntry: AnalyzedHistoryEntry = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          fileName: label,
+          analyzedAt: new Date().toISOString(),
+          result,
+        };
+
+        setAnalyzerHistory((previous) =>
+          [historyEntry, ...previous].slice(0, MAX_HISTORY_ITEMS),
+        );
+        setActiveAnalysisId(historyEntry.id);
+        setAnalyzerResult(result);
+      } catch (analyzeError) {
+        setError(
+          analyzeError instanceof Error
+            ? analyzeError.message
+            : "Track analysis failed",
+        );
+      } finally {
+        setAnalyzingStartedAt(null);
+        setUploading(false);
+      }
+    },
+    [applyAnalyzedAudioUrl, token],
+  );
 
   const handleFindSimilarSongs = useCallback(async () => {
     if (!token) {
@@ -2265,7 +2371,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
             {discoverSubTab === "analyzer"
               ? "Drop audio for balanced-accuracy Essentia.js analysis with multi-segment BPM and key consensus."
               : discoverSubTab === "similar"
-                ? "Find similar references from Spotify + Last.fm in a dedicated Discover workflow."
+                ? "Search any track and discover closely matching songs, ranked by how similar they sound."
                 : "Use the metronome, drag BPM scroller, and tap tempo (spacebar or click) to lock in tempo fast."}
           </p>
         </section>
@@ -2478,9 +2584,14 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
           <article className="scanner-shell mt-2 p-4 sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.15em] text-cyan-200/85">
-                  Scanner Input
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs uppercase tracking-[0.15em] text-cyan-200/85">
+                    Scanner Input
+                  </p>
+                  <span className="rounded-full border border-cyan-300/45 bg-cyan-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-100">
+                    Recommended
+                  </span>
+                </div>
                 <h3 className="mt-1 text-sm font-semibold text-cyan-100">
                   Drop audio or scan a track
                 </h3>
@@ -2555,11 +2666,11 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-medium text-cyan-100">
-                    Similar Songs Finder (Spotify + Last.fm)
+                    Similar Songs Finder
                   </h3>
                   <p className="mt-1 text-xs text-foreground/65">
-                    Resolve a source song with Spotify and rank similar songs
-                    with Last.fm relevance.
+                    Search for a song, then get a ranked list of tracks that
+                    sound similar.
                   </p>
                 </div>
               </div>
@@ -2624,8 +2735,8 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                           {spotifySelectedTrack.name}
                         </p>
                         <p className="mt-1 text-xs text-foreground/60">
-                          Last.fm tags and preview are loaded when you select a
-                          track.
+                          Tags and a quick preview load automatically once you
+                          pick a track.
                         </p>
 
                         <div className="mt-3 grid gap-2">
@@ -2647,11 +2758,11 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                                   ))
                               ) : selectedTrackTagContext.loading ? (
                                 <span className="text-[11px] text-foreground/55">
-                                  Loading Last.fm genre tags...
+                                  Loading genre tags...
                                 </span>
                               ) : (
                                 <span className="text-[11px] text-foreground/55">
-                                  No Last.fm genre tags found
+                                  No genre tags found
                                 </span>
                               )}
                             </div>
@@ -2675,11 +2786,11 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                                   ))
                               ) : selectedTrackTagContext.loading ? (
                                 <span className="text-[11px] text-foreground/55">
-                                  Loading Last.fm mood tags...
+                                  Loading mood tags...
                                 </span>
                               ) : (
                                 <span className="text-[11px] text-foreground/55">
-                                  No Last.fm mood tags found
+                                  No mood tags found
                                 </span>
                               )}
                             </div>
@@ -2717,7 +2828,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                               rel="noreferrer"
                               className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs uppercase tracking-wide text-cyan-100 transition hover:border-cyan-300/60 hover:bg-cyan-500/20"
                             >
-                              Open on Last.fm
+                              More Details
                             </a>
                           ) : null}
                           {spotifySelectedTrack.externalUrl ? (
@@ -2734,13 +2845,13 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                         {!selectedTrackTagContext.lastfmUrl ? (
                           <p className="mt-1 text-[11px] text-foreground/55">
                             {selectedTrackTagContext.loading
-                              ? "Looking up Last.fm preview link..."
-                              : "No Last.fm preview link available for this track."}
+                              ? "Looking up a preview link..."
+                              : "No preview link available for this track."}
                           </p>
                         ) : null}
                         {selectedTrackContextError ? (
                           <p className="mt-1 text-[11px] text-danger">
-                            Last.fm context unavailable:{" "}
+                            Track context unavailable:{" "}
                             {selectedTrackContextError}
                           </p>
                         ) : null}
@@ -2836,7 +2947,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                     </p>
                   </div>
                   <p className="similar-loading-subtitle mt-2 text-[11px] text-foreground/60">
-                    Building similarity graph with Spotify and Last.fm signals.
+                    Building your ranked similarity results.
                   </p>
                 </div>
               ) : null}
@@ -2854,7 +2965,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                       )}
                     </p>
                     <p className="mt-1 text-[11px] uppercase tracking-wide text-foreground/60">
-                      Provider: Last.fm (normalized relevance)
+                      Ranked by normalized relevance score
                     </p>
                   </div>
 
@@ -3040,7 +3151,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                                           rel="noreferrer"
                                           className="inline-block rounded-md border border-cyan-500/35 bg-cyan-500/10 px-3 py-1.5 text-xs uppercase tracking-wide text-cyan-100 hover:border-cyan-300/55"
                                         >
-                                          Open on Last.fm
+                                          More Details
                                         </a>
                                       );
                                     }
@@ -3070,7 +3181,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                                       rel="noreferrer"
                                       className="inline-block rounded-md border border-cyan-700/40 bg-black/40 px-3 py-1.5 text-xs uppercase tracking-wide text-foreground/80 hover:border-cyan-300/50 hover:text-cyan-100"
                                     >
-                                      Last.fm
+                                      More Info
                                     </a>
                                   ) : null}
                                 </div>
@@ -3382,7 +3493,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                           type="button"
                           disabled={uploading}
                           onClick={() =>
-                            void handleSelectAnalyzerSpotifyTrack(track)
+                            void handleAnalyzeSpotifyTrack(track)
                           }
                           className="flex flex-1 items-start gap-2 text-left"
                         >
@@ -3538,6 +3649,36 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                         </p>
                       </div>
                     </div>
+
+                    {analyzedAudioUrl ? (
+                      <div className="mt-4 rounded-xl border border-cyan-500/20 bg-black/40 p-3">
+                        <p className="mb-2 text-[11px] uppercase tracking-[0.14em] text-foreground/60">
+                          Playback
+                        </p>
+                        <audio
+                          controls
+                          src={analyzedAudioUrl}
+                          preload="none"
+                          className="w-full"
+                        />
+                      </div>
+                    ) : analyzedSpotifyEmbedId ? (
+                      <div className="mt-4 rounded-xl border border-cyan-500/20 bg-black/40 p-3">
+                        <p className="mb-2 text-[11px] uppercase tracking-[0.14em] text-foreground/60">
+                          Playback
+                        </p>
+                        <div className="w-full overflow-hidden rounded-md border border-cyan-700/40 bg-black/25">
+                          <iframe
+                            title="Spotify preview player"
+                            src={`https://open.spotify.com/embed/track/${analyzedSpotifyEmbedId}?utm_source=generator`}
+                            width="100%"
+                            height="80"
+                            loading="lazy"
+                            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <article className="rounded-xl border border-cyan-500/35 bg-black/35 p-4 shadow-[0_0_28px_rgba(6,182,212,0.12)]">

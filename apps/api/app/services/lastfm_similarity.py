@@ -12,6 +12,19 @@ from app.services.similarity_provider import (
     TrackContext,
 )
 
+_LASTFM_CLIENT: httpx.AsyncClient | None = None
+
+
+def _get_lastfm_client() -> httpx.AsyncClient:
+    global _LASTFM_CLIENT
+    if _LASTFM_CLIENT is None:
+        _LASTFM_CLIENT = httpx.AsyncClient(
+            timeout=15.0,
+            http2=True,
+            limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
+        )
+    return _LASTFM_CLIENT
+
 
 class LastFmSimilarityProvider(SimilarityProvider):
     def __init__(self) -> None:
@@ -22,19 +35,19 @@ class LastFmSimilarityProvider(SimilarityProvider):
         if not self.api_key:
             raise RuntimeError("Last.fm API key is missing. Set LASTFM_API_KEY.")
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(
-                self.base_url,
-                params={
-                    "method": "track.getSimilar",
-                    "api_key": self.api_key,
-                    "artist": artist,
-                    "track": title,
-                    "autocorrect": 1,
-                    "limit": max(1, min(limit, 50)),
-                    "format": "json",
-                },
-            )
+        client = _get_lastfm_client()
+        response = await client.get(
+            self.base_url,
+            params={
+                "method": "track.getSimilar",
+                "api_key": self.api_key,
+                "artist": artist,
+                "track": title,
+                "autocorrect": 1,
+                "limit": max(1, min(limit, 50)),
+                "format": "json",
+            },
+        )
 
         if response.status_code >= 400:
             raise RuntimeError(f"Last.fm request failed ({response.status_code}): {response.text}")
@@ -82,18 +95,18 @@ class LastFmSimilarityProvider(SimilarityProvider):
         if not self.api_key:
             raise RuntimeError("Last.fm API key is missing. Set LASTFM_API_KEY.")
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(
-                self.base_url,
-                params={
-                    "method": "artist.getSimilar",
-                    "api_key": self.api_key,
-                    "artist": artist,
-                    "autocorrect": 1,
-                    "limit": max(1, min(limit, 50)),
-                    "format": "json",
-                },
-            )
+        client = _get_lastfm_client()
+        response = await client.get(
+            self.base_url,
+            params={
+                "method": "artist.getSimilar",
+                "api_key": self.api_key,
+                "artist": artist,
+                "autocorrect": 1,
+                "limit": max(1, min(limit, 50)),
+                "format": "json",
+            },
+        )
 
         if response.status_code >= 400:
             raise RuntimeError(f"Last.fm request failed ({response.status_code}): {response.text}")
@@ -141,8 +154,8 @@ class LastFmSimilarityProvider(SimilarityProvider):
             "format": "json",
         }
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(self.base_url, params=params)
+        client = _get_lastfm_client()
+        response = await client.get(self.base_url, params=params)
 
         if response.status_code >= 400:
             raise RuntimeError(f"Last.fm request failed ({response.status_code}): {response.text}")
@@ -170,18 +183,18 @@ class LastFmSimilarityProvider(SimilarityProvider):
         return TrackContext(url=url, tags=tags)
 
     async def _fetch_track_top_tags(self, *, artist: str, title: str, limit_tags: int) -> list[str]:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(
-                self.base_url,
-                params={
-                    "method": "track.getTopTags",
-                    "api_key": self.api_key,
-                    "artist": artist,
-                    "track": title,
-                    "autocorrect": 1,
-                    "format": "json",
-                },
-            )
+        client = _get_lastfm_client()
+        response = await client.get(
+            self.base_url,
+            params={
+                "method": "track.getTopTags",
+                "api_key": self.api_key,
+                "artist": artist,
+                "track": title,
+                "autocorrect": 1,
+                "format": "json",
+            },
+        )
 
         if response.status_code >= 400:
             return []
@@ -191,17 +204,17 @@ class LastFmSimilarityProvider(SimilarityProvider):
         return _extract_tag_names(raw_tags, limit=max(1, min(limit_tags, 12)))
 
     async def _fetch_artist_top_tags(self, *, artist: str, limit_tags: int) -> list[str]:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(
-                self.base_url,
-                params={
-                    "method": "artist.getTopTags",
-                    "api_key": self.api_key,
-                    "artist": artist,
-                    "autocorrect": 1,
-                    "format": "json",
-                },
-            )
+        client = _get_lastfm_client()
+        response = await client.get(
+            self.base_url,
+            params={
+                "method": "artist.getTopTags",
+                "api_key": self.api_key,
+                "artist": artist,
+                "autocorrect": 1,
+                "format": "json",
+            },
+        )
 
         if response.status_code >= 400:
             return []

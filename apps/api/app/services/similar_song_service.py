@@ -28,7 +28,7 @@ _LASTFM_ARTIST_CACHE_MAX = 128
 _LASTFM_TRACK_CONTEXT_CACHE_MAX = 256
 _SIMILAR_RESULT_CACHE_MAX = 96
 _SIMILAR_RESULT_CACHE_TTL_SECONDS = 180
-_SPOTIFY_MATCH_CONCURRENCY = 6
+_SPOTIFY_MATCH_CONCURRENCY = 14
 _SPOTIFY_MATCH_TIMEOUT_SECONDS = 4.0
 
 _MOOD_HINTS = {
@@ -147,7 +147,7 @@ def _dedupe_tags(tags: list[str], *, limit: int) -> list[str]:
     for raw in tags:
         cleaned = " ".join(raw.strip().split())
         normalized = _normalize_tag(cleaned)
-        if not normalized or normalized in seen:
+        if not normalized or normalized in seen or not any(ch.isalpha() for ch in normalized):
             continue
         seen.add(normalized)
         output.append(cleaned)
@@ -949,7 +949,7 @@ async def find_similar_songs(
     similar_items.sort(key=lambda item: item.get("similarityScore", 0.0), reverse=True)
 
     sliced = similar_items[:normalized_limit]
-    tag_enrichment_semaphore = asyncio.Semaphore(4)
+    tag_enrichment_semaphore = asyncio.Semaphore(10)
 
     async def enrich_item_tags(item: dict[str, Any]) -> dict[str, Any]:
         item_artist = str(item.get("artist") or "").strip()

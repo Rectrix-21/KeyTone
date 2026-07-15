@@ -3,6 +3,7 @@ import copy
 import hashlib
 import secrets
 import tempfile
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any
@@ -39,19 +40,24 @@ router = APIRouter(prefix="/v1/projects", tags=["projects"])
 
 
 DISCOVER_CACHE_MAX_ITEMS = 32
-_discover_analysis_cache: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
+DISCOVER_CACHE_TTL_SECONDS = 900
+_discover_analysis_cache: "OrderedDict[str, tuple[float, dict[str, Any]]]" = OrderedDict()
 
 
 def _discover_cache_get(cache_key: str) -> dict[str, Any] | None:
     cached = _discover_analysis_cache.get(cache_key)
     if cached is None:
         return None
+    expires_at, value = cached
+    if time.time() >= expires_at:
+        _discover_analysis_cache.pop(cache_key, None)
+        return None
     _discover_analysis_cache.move_to_end(cache_key)
-    return copy.deepcopy(cached)
+    return copy.deepcopy(value)
 
 
 def _discover_cache_set(cache_key: str, value: dict[str, Any]) -> None:
-    _discover_analysis_cache[cache_key] = copy.deepcopy(value)
+    _discover_analysis_cache[cache_key] = (time.time() + DISCOVER_CACHE_TTL_SECONDS, copy.deepcopy(value))
     _discover_analysis_cache.move_to_end(cache_key)
     while len(_discover_analysis_cache) > DISCOVER_CACHE_MAX_ITEMS:
         _discover_analysis_cache.popitem(last=False)
@@ -236,6 +242,11 @@ async def analyze_discover_spotify_track(
     repository = Repository()
     repository.ensure_profile(user.id, user.email)
 
+    cache_key = f"spotify::{payload.spotify_track_input.strip().lower()}"
+    cached = _discover_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     def _map_spotify_status(status_code: int) -> int:
         if status_code == 400:
             return status.HTTP_400_BAD_REQUEST
@@ -244,7 +255,9 @@ async def analyze_discover_spotify_track(
         return status.HTTP_502_BAD_GATEWAY
 
     try:
-        return await analyze_spotify_track_by_input(payload.spotify_track_input)
+        result = await analyze_spotify_track_by_input(payload.spotify_track_input)
+        _discover_cache_set(cache_key, result)
+        return result
     except SpotifyApiError as exc:
         raise HTTPException(
             status_code=_map_spotify_status(exc.status_code),

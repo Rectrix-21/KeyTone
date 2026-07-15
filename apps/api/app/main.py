@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.routers.contact import router as contact_router
 from app.routers.health import router as health_router
 from app.routers.projects import router as projects_router
 from app.routers.stripe import router as stripe_router
@@ -24,6 +25,7 @@ def create_app() -> FastAPI:
     app.include_router(users_router)
     app.include_router(projects_router)
     app.include_router(stripe_router)
+    app.include_router(contact_router)
     return app
 
 

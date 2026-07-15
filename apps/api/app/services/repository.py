@@ -12,18 +12,66 @@ def is_pro_tier(subscription_status: str, is_admin: bool) -> bool:
     return is_admin or subscription_status == "active"
 
 
+def _normalize_email_for_credit_tracking(email: str) -> str:
+    cleaned = email.strip().lower()
+    if "@" not in cleaned:
+        return cleaned
+
+    local, _, domain = cleaned.partition("@")
+    local = local.split("+", 1)[0]  # "+tag" aliases route to the same inbox everywhere
+
+    if domain in {"gmail.com", "googlemail.com"}:
+        local = local.replace(".", "")  # Gmail ignores dots in the local part
+        domain = "gmail.com"  # googlemail.com is just an alias domain for gmail.com
+
+    return f"{local}@{domain}"
+
+
 class Repository:
     def __init__(self) -> None:
         self.client = get_supabase_service_client()
 
     def ensure_profile(self, user_id: str, email: str) -> dict[str, Any]:
+        existing = self.client.table("profiles").select("*").eq("id", user_id).limit(1).execute()
+        if existing.data:
+            return self._apply_weekly_credit_reset(existing.data[0])
+
+        initial_credits = FREE_PLAN_WEEKLY_CREDITS
+        normalized_email = _normalize_email_for_credit_tracking(email)
+        if normalized_email:
+            claimed = (
+                self.client.table("claimed_free_credits")
+                .select("email")
+                .eq("email", normalized_email)
+                .limit(1)
+                .execute()
+            )
+            if claimed.data:
+                # This email already claimed free credits on a prior (now
+                # deleted) account -- don't let delete-and-resignup reset it.
+                initial_credits = 0
+            else:
+                self.client.table("claimed_free_credits").upsert(
+                    {"email": normalized_email}, on_conflict="email", ignore_duplicates=True
+                ).execute()
+
         profile_response = (
             self.client.table("profiles")
-            .upsert({"id": user_id, "email": email}, on_conflict="id", ignore_duplicates=False)
+            .upsert(
+                {"id": user_id, "email": email, "remaining_credits": initial_credits},
+                on_conflict="id",
+                ignore_duplicates=True,
+            )
             .execute()
         )
 
-        data = profile_response.data[0]
+        if profile_response.data:
+            data = profile_response.data[0]
+        else:
+            # Upsert was a no-op (ON CONFLICT DO NOTHING) because a concurrent
+            # request already created this profile -- fetch what it wrote.
+            refetched = self.client.table("profiles").select("*").eq("id", user_id).limit(1).execute()
+            data = refetched.data[0]
         return self._apply_weekly_credit_reset(data)
 
     def get_profile(self, user_id: str) -> dict[str, Any]:

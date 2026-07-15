@@ -128,6 +128,23 @@ export async function createPortalSession(accessToken: string) {
   );
 }
 
+export async function submitContactForm(
+  accessToken: string,
+  payload: { kind: "bug" | "feature"; subject: string; message: string },
+) {
+  return request<{ status: string }>(
+    "/v1/contact",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+    accessToken,
+  );
+}
+
 export async function uploadProject(
   file: File,
   accessToken: string,

@@ -164,7 +164,7 @@ def _estimate_sections(duration_sec: float, energy_score: float) -> list[dict[st
     return [section for section in sections if float(section["endSec"]) - float(section["startSec"]) >= 2.0]
 
 
-def _downgrade_low_confidence_key(result: dict[str, Any], minimum_confidence: float = 0.72) -> dict[str, Any]:
+def _downgrade_low_confidence_key(result: dict[str, Any], minimum_confidence: float = 0.55) -> dict[str, Any]:
     raw_confidence = result.get("keyConfidence")
     confidence = float(raw_confidence) if isinstance(raw_confidence, (int, float)) else 0.0
     if confidence >= minimum_confidence:
@@ -237,9 +237,6 @@ async def _find_deezer_preview_url(
 
         score = 0.0
         deezer_isrc = str(item.get("isrc") or "").strip().upper()
-        if spotify_isrc:
-            if not deezer_isrc or deezer_isrc != spotify_isrc:
-                continue
         if spotify_isrc and deezer_isrc and spotify_isrc == deezer_isrc:
             score += 1.0
 
@@ -265,6 +262,68 @@ async def _find_deezer_preview_url(
             best_track_id = int(raw_track_id) if isinstance(raw_track_id, (int, float)) else None
 
     return best_preview, best_score, best_track_id
+
+
+async def _find_itunes_preview_url(
+    *,
+    track_name: str,
+    artist_name: str,
+    duration_sec: float | None,
+) -> tuple[str | None, float]:
+    clean_title = track_name.strip()
+    clean_artist = artist_name.strip()
+    if not clean_title:
+        return None, 0.0
+
+    client = _get_spotify_api_client()
+    response = await client.get(
+        "https://itunes.apple.com/search",
+        params={
+            "term": f"{clean_title} {clean_artist}".strip(),
+            "media": "music",
+            "entity": "song",
+            "limit": 8,
+        },
+    )
+    if response.status_code >= 400:
+        return None, 0.0
+
+    payload = response.json() if response.content else {}
+    candidates = (payload.get("results") or []) if isinstance(payload, dict) else []
+    if not isinstance(candidates, list):
+        return None, 0.0
+
+    best_preview: str | None = None
+    best_score = 0.0
+
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        preview_url = str(item.get("previewUrl") or "").strip()
+        if not preview_url:
+            continue
+
+        score = 0.0
+        title_score = _token_overlap_score(clean_title, str(item.get("trackName") or ""))
+        artist_score = _token_overlap_score(clean_artist, str(item.get("artistName") or ""))
+        score += title_score * 0.9
+        score += artist_score * 0.9
+
+        itunes_duration_ms = item.get("trackTimeMillis")
+        if isinstance(itunes_duration_ms, (int, float)) and duration_sec and duration_sec > 0:
+            duration_gap = abs(float(itunes_duration_ms) / 1000.0 - duration_sec)
+            if duration_gap <= 2.0:
+                score += 0.7
+            elif duration_gap <= 5.0:
+                score += 0.45
+            elif duration_gap <= 9.0:
+                score += 0.2
+
+        if score > best_score:
+            best_score = score
+            best_preview = preview_url
+
+    return best_preview, best_score
 
 
 async def _get_deezer_track_bpm(track_id: int) -> float | None:
@@ -737,83 +796,122 @@ async def analyze_spotify_track_by_input(value: str) -> dict[str, Any]:
             }
             return spotify_preview_analysis
 
-    features: dict[str, Any] | None = None
-    try:
-        raw_features = await _spotify_get(f"/audio-features/{track_id}")
-        if isinstance(raw_features, dict) and raw_features.get("id"):
-            features = raw_features
-    except SpotifyApiError as exc:
-        if exc.status_code not in {403, 404}:
-            raise
+    async def _fetch_audio_features() -> dict[str, Any] | None:
+        try:
+            raw_features = await _spotify_get(f"/audio-features/{track_id}")
+            if isinstance(raw_features, dict) and raw_features.get("id"):
+                return raw_features
+        except SpotifyApiError as exc:
+            if exc.status_code not in {403, 404}:
+                raise
+        return None
 
-    deezer_preview_url: str | None = None
-    deezer_match_score = 0.0
-    deezer_track_id: int | None = None
-    if features is None:
-        artists = track.get("artists") or []
-        primary_artist = str(artists[0]).strip() if isinstance(artists, list) and artists else ""
-        track_duration_ms = track.get("durationMs")
-        duration_sec = float(track_duration_ms / 1000.0) if isinstance(track_duration_ms, (int, float)) else None
-        deezer_preview_url, deezer_match_score, deezer_track_id = await _find_deezer_preview_url(
+    # Spotify's audio-features endpoint is unavailable to most apps now (403 for
+    # non-extended-quota apps), so it and the Deezer preview lookup are kicked
+    # off together instead of waiting on the near-guaranteed-to-fail features
+    # call before even starting the Deezer search.
+    artists = track.get("artists") or []
+    primary_artist = str(artists[0]).strip() if isinstance(artists, list) and artists else ""
+    track_duration_ms = track.get("durationMs")
+    duration_sec_hint = (
+        float(track_duration_ms / 1000.0) if isinstance(track_duration_ms, (int, float)) else None
+    )
+
+    (
+        features,
+        (deezer_preview_url, deezer_match_score, deezer_track_id),
+        (itunes_preview_url, itunes_match_score),
+    ) = await asyncio.gather(
+        _fetch_audio_features(),
+        _find_deezer_preview_url(
             track_name=str(track.get("name") or ""),
             artist_name=primary_artist,
-            duration_sec=duration_sec,
+            duration_sec=duration_sec_hint,
             isrc=str(track.get("isrc") or ""),
+        ),
+        _find_itunes_preview_url(
+            track_name=str(track.get("name") or ""),
+            artist_name=primary_artist,
+            duration_sec=duration_sec_hint,
+        ),
+    )
+
+    # 1.1 matches the bar already used by resolve_track_preview_url elsewhere in
+    # this module. Deezer is preferred when both match (it also unlocks a
+    # catalog BPM cross-check), but iTunes covers a meaningfully different slice
+    # of the catalog (especially for less mainstream tracks), so it's tried
+    # whenever Deezer doesn't turn up a confident match.
+    MATCH_ACCEPT_THRESHOLD = 1.1
+    preview_source: str | None = None
+    preview_url: str | None = None
+    if deezer_preview_url and deezer_match_score >= MATCH_ACCEPT_THRESHOLD:
+        preview_source = "deezer"
+        preview_url = deezer_preview_url
+    elif itunes_preview_url and itunes_match_score >= MATCH_ACCEPT_THRESHOLD:
+        preview_source = "itunes"
+        preview_url = itunes_preview_url
+
+    if features is None and preview_url and preview_source:
+        async def _maybe_deezer_bpm() -> float | None:
+            if preview_source == "deezer" and isinstance(deezer_track_id, int) and deezer_track_id > 0:
+                return await _get_deezer_track_bpm(deezer_track_id)
+            return None
+
+        remote_analysis, catalog_bpm = await asyncio.gather(
+            _analyze_remote_preview(preview_url),
+            _maybe_deezer_bpm(),
         )
-        if deezer_preview_url and deezer_match_score >= 1.45:
-            deezer_analysis = await _analyze_remote_preview(deezer_preview_url)
-            if deezer_analysis is not None:
-                deezer_analysis = _downgrade_low_confidence_key(deezer_analysis)
-                deezer_bpm = (
-                    await _get_deezer_track_bpm(deezer_track_id)
-                    if isinstance(deezer_track_id, int) and deezer_track_id > 0
-                    else None
+        if remote_analysis is not None:
+            remote_analysis = _downgrade_low_confidence_key(remote_analysis)
+            if catalog_bpm is not None:
+                analyzed_bpm_raw = remote_analysis.get("bpm")
+                analyzed_bpm = float(analyzed_bpm_raw) if isinstance(analyzed_bpm_raw, (int, float)) else catalog_bpm
+                bpm_candidates = [
+                    _clip(analyzed_bpm, 40.0, 220.0),
+                    _clip(analyzed_bpm / 2.0, 40.0, 220.0),
+                    _clip(analyzed_bpm * 2.0, 40.0, 220.0),
+                ]
+                corrected_bpm = min(bpm_candidates, key=lambda candidate: abs(candidate - catalog_bpm))
+                if abs(corrected_bpm - catalog_bpm) > 6.0:
+                    corrected_bpm = catalog_bpm
+
+                remote_analysis["bpm"] = _round(corrected_bpm, 2)
+                current_bpm_confidence_raw = remote_analysis.get("bpmConfidence")
+                current_bpm_confidence = (
+                    float(current_bpm_confidence_raw)
+                    if isinstance(current_bpm_confidence_raw, (int, float))
+                    else 0.5
                 )
-                if deezer_bpm is not None:
-                    analyzed_bpm_raw = deezer_analysis.get("bpm")
-                    analyzed_bpm = float(analyzed_bpm_raw) if isinstance(analyzed_bpm_raw, (int, float)) else deezer_bpm
-                    bpm_candidates = [
-                        _clip(analyzed_bpm, 40.0, 220.0),
-                        _clip(analyzed_bpm / 2.0, 40.0, 220.0),
-                        _clip(analyzed_bpm * 2.0, 40.0, 220.0),
-                    ]
-                    corrected_bpm = min(bpm_candidates, key=lambda candidate: abs(candidate - deezer_bpm))
-                    if abs(corrected_bpm - deezer_bpm) > 6.0:
-                        corrected_bpm = deezer_bpm
+                boosted_confidence = 0.86 if abs(corrected_bpm - catalog_bpm) <= 2.0 else 0.74
+                remote_analysis["bpmConfidence"] = _round(
+                    _clip(max(current_bpm_confidence, boosted_confidence), 0.05, 0.99),
+                    3,
+                )
 
-                    deezer_analysis["bpm"] = _round(corrected_bpm, 2)
-                    current_bpm_confidence_raw = deezer_analysis.get("bpmConfidence")
-                    current_bpm_confidence = (
-                        float(current_bpm_confidence_raw)
-                        if isinstance(current_bpm_confidence_raw, (int, float))
-                        else 0.5
-                    )
-                    boosted_confidence = 0.86 if abs(corrected_bpm - deezer_bpm) <= 2.0 else 0.74
-                    deezer_analysis["bpmConfidence"] = _round(
-                        _clip(max(current_bpm_confidence, boosted_confidence), 0.05, 0.99),
-                        3,
-                    )
+            match_score = deezer_match_score if preview_source == "deezer" else itunes_match_score
+            remote_analysis["analysisJson"] = {
+                **(remote_analysis.get("analysisJson") or {}),
+                "analysisMode": f"{preview_source}_preview_audio",
+                "source": f"{preview_source}_preview_fallback",
+                "track": {
+                    "id": track.get("id"),
+                    "name": track.get("name"),
+                    "artists": track.get("artists"),
+                    "externalUrl": track.get("externalUrl"),
+                    "previewAvailable": bool(track.get("previewUrl")),
+                    "durationMs": track.get("durationMs"),
+                    "popularity": track.get("popularity"),
+                },
+                "featuresAvailable": False,
+                "deezerPreviewUsed": preview_source == "deezer",
+                "itunesPreviewUsed": preview_source == "itunes",
+                "previewMatchScore": _round(match_score, 3),
+                "deezerTrackId": deezer_track_id if preview_source == "deezer" else None,
+                "deezerCatalogBpm": catalog_bpm,
+            }
+            return remote_analysis
 
-                deezer_analysis["analysisJson"] = {
-                    **(deezer_analysis.get("analysisJson") or {}),
-                    "analysisMode": "deezer_preview_audio",
-                    "source": "deezer_preview_fallback",
-                    "track": {
-                        "id": track.get("id"),
-                        "name": track.get("name"),
-                        "artists": track.get("artists"),
-                        "externalUrl": track.get("externalUrl"),
-                        "previewAvailable": bool(track.get("previewUrl")),
-                        "durationMs": track.get("durationMs"),
-                        "popularity": track.get("popularity"),
-                    },
-                    "featuresAvailable": False,
-                    "deezerPreviewUsed": True,
-                    "deezerMatchScore": _round(deezer_match_score, 3),
-                    "deezerTrackId": deezer_track_id,
-                    "deezerCatalogBpm": deezer_bpm,
-                }
-                return deezer_analysis
+    if features is None:
         raise ValueError(
             "Could not find a reliable preview for this Spotify track. Upload audio for accurate BPM and key analysis."
         )

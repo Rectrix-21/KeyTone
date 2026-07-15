@@ -89,3 +89,13 @@ class UserSummaryResponse(BaseModel):
 
 class CheckoutResponse(BaseModel):
     checkout_url: str
+
+
+class ContactRequest(BaseModel):
+    kind: Literal["bug", "feature"]
+    subject: str = ""
+    message: str = Field(min_length=1, max_length=5000)
+
+
+class ContactResponse(BaseModel):
+    status: Literal["sent"] = "sent"

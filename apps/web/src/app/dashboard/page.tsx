@@ -28,7 +28,7 @@ const FEATURE_CARDS: HubFeatureCard[] = [
     href: "/similar",
     title: "Similar Songs",
     description:
-      "Spotify plus Last.fm references with tags and ranked matches.",
+      "Search a song and discover closely matching tracks, ranked by relevance.",
     group: "discover",
   },
   {

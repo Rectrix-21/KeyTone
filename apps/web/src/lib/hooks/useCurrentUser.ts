@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient, getSupabaseEnvError } from "@/lib/supabase/client";
 import { getMe } from "@/lib/api/client";
+import { subscribeCreditsDelta } from "@/lib/hooks/creditsSync";
 import { UserSummary } from "@/types/api";
 
 export interface CurrentUserMetadata {
@@ -100,6 +101,22 @@ export function useCurrentUser(): CurrentUserState {
       subscription.unsubscribe();
     };
   }, [fetchMe]);
+
+  useEffect(() => {
+    return subscribeCreditsDelta((delta) => {
+      setMe((previous) =>
+        previous && !previous.unlimited_credits
+          ? {
+              ...previous,
+              remaining_credits: Math.max(
+                0,
+                previous.remaining_credits + delta,
+              ),
+            }
+          : previous,
+      );
+    });
+  }, []);
 
   const updateProfile = useCallback(
     async (patch: { full_name?: string; avatar_url?: string }) => {

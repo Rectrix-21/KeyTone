@@ -48,5 +48,9 @@ class Settings(BaseSettings):
     lastfm_api_key: str = ""
     lastfm_base_url: str = "https://ws.audioscrobbler.com/2.0/"
 
+    gmail_smtp_username: str = ""
+    gmail_smtp_app_password: str = ""
+    contact_recipient_email: str = "rectrix21@gmail.com"
+
 
 settings = Settings()
