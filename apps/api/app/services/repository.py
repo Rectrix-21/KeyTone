@@ -186,11 +186,28 @@ class Repository:
         response = query.execute()
         return len(response.data or [])
 
-    def set_profile_subscription(self, user_id: str, status: str, credits: int) -> None:
-        self.client.table("profiles").update(
-            {
-                "subscription_status": status,
-                "remaining_credits": credits,
-                "updated_at": datetime.now(UTC).isoformat()
-            }
-        ).eq("id", user_id).execute()
+    def set_profile_subscription(
+        self,
+        user_id: str,
+        status: str,
+        credits: int,
+        stripe_customer_id: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "subscription_status": status,
+            "remaining_credits": credits,
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+        if stripe_customer_id:
+            payload["stripe_customer_id"] = stripe_customer_id
+        self.client.table("profiles").update(payload).eq("id", user_id).execute()
+
+    def get_profile_by_stripe_customer_id(self, customer_id: str) -> dict[str, Any] | None:
+        result = (
+            self.client.table("profiles")
+            .select("*")
+            .eq("stripe_customer_id", customer_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None

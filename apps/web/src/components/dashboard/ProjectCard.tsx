@@ -767,17 +767,18 @@ function StaticPianoRoll({
   title: string;
   notes: MidiPreviewNote[] | undefined;
 }) {
-  const safeNotes = notes ?? [];
+  const safeNotes = useMemo(() => notes ?? [], [notes]);
   const sorted = useMemo(
     () => [...safeNotes].sort((a, b) => a.start - b.start),
     [safeNotes],
   );
   const [playing, setPlaying] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
   const schedulerRef = useRef<number | null>(null);
   const nextNoteIndexRef = useRef(0);
   const elapsedRef = useRef(0);
   const frameRef = useRef<number | null>(null);
+  const playheadRef = useRef<HTMLDivElement | null>(null);
+  const timeLabelRef = useRef<HTMLSpanElement | null>(null);
 
   const duration = useMemo(() => {
     if (sorted.length === 0) {
@@ -785,6 +786,14 @@ function StaticPianoRoll({
     }
     return Math.max(4, sorted[sorted.length - 1].end);
   }, [sorted]);
+
+  const width = Math.max(520, Math.ceil(duration * 100));
+  const height = 170;
+  const minPitch =
+    sorted.length > 0 ? Math.min(...sorted.map((note) => note.pitch)) : 36;
+  const maxPitch =
+    sorted.length > 0 ? Math.max(...sorted.map((note) => note.pitch)) : 84;
+  const pitchSpan = Math.max(12, maxPitch - minPitch + 1);
 
   const playPreviewNote = (
     pitch: number,
@@ -800,6 +809,9 @@ function StaticPianoRoll({
     );
   };
 
+  // Drives the playhead line + time label directly via refs (no React state
+  // updates per frame) so 60fps playback doesn't force a full re-render of
+  // this component (and its note list) every frame.
   useEffect(() => {
     if (!playing) {
       return;
@@ -810,7 +822,15 @@ function StaticPianoRoll({
     const step = (timestamp: number) => {
       const nextElapsed = (timestamp - startedAt) / 1000;
       elapsedRef.current = nextElapsed;
-      setElapsed(nextElapsed);
+
+      if (timeLabelRef.current) {
+        timeLabelRef.current.textContent = `t=${nextElapsed.toFixed(2)}s`;
+      }
+      if (playheadRef.current) {
+        const x = Math.min((nextElapsed / duration) * width, width);
+        playheadRef.current.style.left = `${x}px`;
+      }
+
       if (
         sorted.length > 0 &&
         nextElapsed > sorted[sorted.length - 1].end + 0.25
@@ -829,7 +849,7 @@ function StaticPianoRoll({
         frameRef.current = null;
       }
     };
-  }, [elapsed, playing, sorted]);
+  }, [playing, sorted, duration, width]);
 
   useEffect(() => {
     if (!playing || sorted.length === 0) {
@@ -879,15 +899,16 @@ function StaticPianoRoll({
 
   useEffect(() => {
     if (!playing) {
-      setElapsed(0);
       elapsedRef.current = 0;
       nextNoteIndexRef.current = 0;
+      if (timeLabelRef.current) {
+        timeLabelRef.current.textContent = "t=0.00s";
+      }
     }
   }, [playing]);
 
   useEffect(() => {
     setPlaying(false);
-    setElapsed(0);
     elapsedRef.current = 0;
     nextNoteIndexRef.current = 0;
   }, [notes]);
@@ -901,19 +922,16 @@ function StaticPianoRoll({
     );
   }
 
-  const minPitch = Math.min(...sorted.map((note) => note.pitch));
-  const maxPitch = Math.max(...sorted.map((note) => note.pitch));
-  const pitchSpan = Math.max(12, maxPitch - minPitch + 1);
-  const width = Math.max(520, Math.ceil(duration * 100));
-  const height = 170;
-
   return (
     <div className="rounded-md border border-cyan-500/20 bg-black/45 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="text-xs text-foreground/70">{title}</p>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-foreground/60">
-            t={elapsed.toFixed(2)}s
+          <span
+            ref={timeLabelRef}
+            className="text-[11px] text-foreground/60"
+          >
+            t=0.00s
           </span>
           <button
             type="button"
@@ -930,7 +948,6 @@ function StaticPianoRoll({
                 }
                 nextNoteIndexRef.current = 0;
                 elapsedRef.current = 0;
-                setElapsed(0);
                 setPlaying(true);
               })();
             }}
@@ -972,9 +989,10 @@ function StaticPianoRoll({
           })}
           {playing ? (
             <div
+              ref={playheadRef}
               className="pointer-events-none absolute top-0 bottom-0 w-px bg-cyan-100/90"
               style={{
-                left: `${Math.min((elapsed / duration) * width, width)}px`,
+                left: "0px",
                 boxShadow: "0 0 12px rgba(125, 211, 252, 0.55)",
               }}
             />
@@ -2472,16 +2490,6 @@ const ProjectCardComponent = ({
                 ) : null
               ) : (
                 <>
-                  {project.assets.midi_base_url ? (
-                    <a
-                      href={project.assets.midi_base_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="cyber-btn px-3 py-1.5"
-                    >
-                      Most Accurate MIDI
-                    </a>
-                  ) : null}
                   {project.assets.midi_variation_urls.map((url, index) => (
                     <a
                       key={url}
@@ -2515,7 +2523,7 @@ const ProjectCardComponent = ({
                         rel="noreferrer"
                         className="cyber-btn px-3 py-1.5"
                       >
-                        {target[0]?.toUpperCase()}
+                        Download {target[0]?.toUpperCase()}
                         {target.slice(1)} Stem
                       </a>
                     ),
@@ -2589,22 +2597,24 @@ const ProjectCardComponent = ({
                   </button>
                 </div>
               </div>
-              <div className="mb-2 flex flex-wrap gap-2">
-                {previewLaneOptions.map((lane) => (
-                  <button
-                    key={lane}
-                    type="button"
-                    onClick={() => setSelectedLane(lane)}
-                    className={`rounded-md border px-3 py-1 text-xs uppercase tracking-wide ${
-                      selectedLane === lane
-                        ? "border-cyan-300/50 bg-cyan-500/15 text-cyan-100"
-                        : "border-cyan-700/40 bg-black/30 text-foreground/70"
-                    }`}
-                  >
-                    {lane === "full" ? "Full mix" : `${lane} only`}
-                  </button>
-                ))}
-              </div>
+              {previewLaneOptions.length > 2 ? (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {previewLaneOptions.map((lane) => (
+                    <button
+                      key={lane}
+                      type="button"
+                      onClick={() => setSelectedLane(lane)}
+                      className={`rounded-md border px-3 py-1 text-xs uppercase tracking-wide ${
+                        selectedLane === lane
+                          ? "border-cyan-300/50 bg-cyan-500/15 text-cyan-100"
+                          : "border-cyan-700/40 bg-black/30 text-foreground/70"
+                      }`}
+                    >
+                      {lane === "full" ? "Full mix" : `${lane} only`}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-cyan-500/20 bg-black/45">
                 <div className="flex" style={{ height: `${rollHeight}px` }}>
                   <div className="relative w-16 shrink-0 border-r border-cyan-500/20 bg-black/60">

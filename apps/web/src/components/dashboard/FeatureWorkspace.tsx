@@ -44,6 +44,9 @@ import {
 } from "@/types/api";
 import { UploadDropzone } from "@/components/dashboard/UploadDropzone";
 import { ProjectCard } from "@/components/dashboard/ProjectCard";
+import { AudioTrimPanel } from "@/components/dashboard/AudioTrimPanel";
+import { WindowsIcon, AppleIcon } from "@/components/dashboard/OsIcons";
+import { probeAudioDuration } from "@/lib/audio/trimAudio";
 
 const POLL_MS = 2500;
 const MAX_HISTORY_ITEMS = 10;
@@ -436,6 +439,9 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
   );
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [extractionTrimFile, setExtractionTrimFile] = useState<File | null>(
+    null,
+  );
   const [generatingByProject, setGeneratingByProject] = useState<
     Record<string, string[]>
   >({});
@@ -1366,8 +1372,14 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
       }
     });
 
+    Object.entries(alteringByProject).forEach(([projectId, isAltering]) => {
+      if (isAltering) {
+        ids.add(projectId);
+      }
+    });
+
     return Array.from(ids);
-  }, [generatingByProject, projects]);
+  }, [alteringByProject, generatingByProject, projects]);
 
   useEffect(() => {
     if (!token || activePollingProjectIds.length === 0) {
@@ -1399,6 +1411,25 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
         setProjects((previous) =>
           previous.map((project) => updateMap.get(project.id) ?? project),
         );
+        setAlteringByProject((previous) => {
+          let changed = false;
+          const next = { ...previous };
+          for (const [projectId, isAltering] of Object.entries(previous)) {
+            if (!isAltering) {
+              continue;
+            }
+            const updated = updateMap.get(projectId);
+            if (
+              updated &&
+              updated.status !== "pending" &&
+              updated.status !== "processing"
+            ) {
+              next[projectId] = false;
+              changed = true;
+            }
+          }
+          return changed ? next : previous;
+        });
       } catch {
         // Keep polling on transient failures.
       } finally {
@@ -1503,6 +1534,31 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     [me, tab, token, variationTarget],
   );
 
+  const onExtractionFileAccepted = useCallback(
+    async (file: File) => {
+      try {
+        const duration = await probeAudioDuration(file);
+        if (duration > 60) {
+          setExtractionTrimFile(file);
+          return;
+        }
+      } catch {
+        // If duration can't be read, fall through and let the backend
+        // validate the file instead of blocking the upload.
+      }
+      void handleUpload(file);
+    },
+    [handleUpload],
+  );
+
+  const onExtractionTrimConfirm = useCallback(
+    (trimmedFile: File) => {
+      setExtractionTrimFile(null);
+      void handleUpload(trimmedFile);
+    },
+    [handleUpload],
+  );
+
   const handleGenerateStarters = useCallback(async () => {
     if (!token) {
       setError("Sign in is required to generate starter ideas.");
@@ -1528,9 +1584,9 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
       if (response.project_ids.length > 0) {
         const refreshedProjects = await listProjects(token);
         setProjects((previous) =>
-          limitProjectHistory(
-            refreshedProjects.length > 0 ? refreshedProjects : previous,
-          ),
+          refreshedProjects.length > 0
+            ? applyProjectHistoryPolicy(refreshedProjects, featureClearCutoffs)
+            : previous,
         );
       }
     } catch (starterError) {
@@ -1543,6 +1599,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
       setStarterGenerating(false);
     }
   }, [
+    featureClearCutoffs,
     starterBars,
     starterBpm,
     starterComplexity,
@@ -1679,12 +1736,15 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
             ? variationError.message
             : "Failed to alter variation",
         );
-      } finally {
         setAlteringByProject((previous) => ({
           ...previous,
           [projectId]: false,
         }));
       }
+      // On success, `altering` stays true until polling observes the
+      // background job has actually finished (see activePollingProjectIds
+      // and the poll effect) -- the POST here only confirms the job was
+      // queued, not that it completed.
     },
     [token],
   );
@@ -2108,46 +2168,77 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-200/85">
-                  Stem and MIDI Extraction
+                  MIDI Extraction
                 </p>
                 <h2 className="mt-1 text-sm font-medium text-cyan-100 sm:text-base">
-                  Drop audio to generate MIDI, or download the desktop app for
-                  stems.
+                  Drop audio, or choose a file, to generate MIDI in the
+                  browser.
                 </h2>
               </div>
             </div>
 
-            <UploadDropzone
-              onFileAccepted={handleUpload}
-              mode="audio"
-              disabled={
-                uploading ||
-                !me ||
-                (!me.unlimited_credits && (me.remaining_credits ?? 0) <= 0)
-              }
-              message="Drop MP3/WAV/M4A up to 25MB, or click to upload."
-              className="mt-3 border-cyan-300/55 bg-black/35"
-            />
+            {extractionTrimFile ? (
+              <AudioTrimPanel
+                file={extractionTrimFile}
+                onConfirm={onExtractionTrimConfirm}
+                onCancel={() => setExtractionTrimFile(null)}
+              />
+            ) : (
+              <UploadDropzone
+                onFileAccepted={(file) => void onExtractionFileAccepted(file)}
+                mode="audio"
+                disabled={
+                  uploading ||
+                  !me ||
+                  (!me.unlimited_credits && (me.remaining_credits ?? 0) <= 0)
+                }
+                message="Drop MP3/WAV/M4A up to 25MB, or click to choose from your folder."
+                className="mt-3 border-cyan-300/55 bg-black/35"
+              />
+            )}
+          </section>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-foreground/70">
-              <span>Need stems? Download KeyTone Studio:</span>
+          <section className="mb-4 rounded-xl border border-cyan-500/20 bg-black/35 p-4 sm:p-5">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-200/85">
+              Stem Extraction
+            </p>
+            <h2 className="mt-1 text-sm font-medium text-cyan-100 sm:text-base">
+              Download KeyTone Studio for high-quality local stem separation.
+            </h2>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <a
                 href={LOCAL_COMPANION_DOWNLOADS.windows}
                 target="_blank"
                 rel="noreferrer"
-                className="text-cyan-100 underline decoration-cyan-300/60 underline-offset-2"
+                className="group flex flex-col items-center gap-3 rounded-xl border border-cyan-500/30 bg-black/30 px-4 py-6 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300/60 hover:bg-cyan-500/10"
               >
-                Windows
+                <WindowsIcon className="h-10 w-10 text-cyan-200 transition-colors group-hover:text-cyan-100" />
+                <span className="text-sm font-medium text-cyan-100">
+                  Download for Windows
+                </span>
               </a>
               <a
                 href={LOCAL_COMPANION_DOWNLOADS.mac}
                 target="_blank"
                 rel="noreferrer"
-                className="text-cyan-100 underline decoration-cyan-300/60 underline-offset-2"
+                className="group flex flex-col items-center gap-3 rounded-xl border border-cyan-500/30 bg-black/30 px-4 py-6 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300/60 hover:bg-cyan-500/10"
               >
-                macOS
+                <AppleIcon className="h-10 w-10 text-cyan-200 transition-colors group-hover:text-cyan-100" />
+                <span className="text-sm font-medium text-cyan-100">
+                  Download for macOS
+                </span>
               </a>
             </div>
+
+            <p className="mt-3 text-[11px] leading-relaxed text-foreground/60">
+              Windows may show a SmartScreen warning (&ldquo;Windows protected
+              your PC&rdquo;) since the installer isn&apos;t code-signed yet —
+              click{" "}
+              <span className="text-foreground/80">More info</span>, then{" "}
+              <span className="text-foreground/80">Run anyway</span>. This is
+              expected and safe.
+            </p>
           </section>
         </>
       ) : tab === "variation" ? (
@@ -2348,7 +2439,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                 <button
                   type="button"
                   onClick={() => void handleGenerateStarters()}
-                  disabled={starterGenerating}
+                  disabled={starterGenerating || clearingHistory}
                   className="starter-generate-btn disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {starterGenerating ? "Generating..." : "Generate"}
@@ -2381,6 +2472,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
       )}
 
       {tab !== "starter" &&
+      tab !== "extraction" &&
       (tab !== "discover" || discoverSubTab === "analyzer") ? (
         tab === "discover" && discoverSubTab === "analyzer" ? (
           <article className="scanner-shell mt-2 p-4 sm:p-5">
@@ -2425,12 +2517,6 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
                   (me?.remaining_credits ?? 0) <= 0)
               }
             />
-            {tab === "extraction" ? (
-              <p className="mt-2 text-xs text-foreground/65">
-                For optimized MIDI processing, keep uploads under 1 minute, use
-                high-quality audio, and prefer isolated instruments.
-              </p>
-            ) : null}
           </>
         )
       ) : null}

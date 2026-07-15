@@ -523,6 +523,7 @@ async def alter_project_variation(
             )
 
     normalized_key = key.strip() or "C major"
+    repository.set_project_processing(project_id)
     start_project_task(
         project_id,
         alter_variation_midi(

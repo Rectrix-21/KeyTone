@@ -32,6 +32,8 @@ export function AuthNav() {
     router.refresh();
   };
 
+  const isPro = Boolean(me?.is_admin || me?.subscription_status === "active");
+
   return (
     <nav className="flex items-center gap-2 text-xs text-cyan-100/80 sm:gap-4 sm:text-sm">
       <Link href="/pricing" className="hover:text-cyan-200">
@@ -49,6 +51,7 @@ export function AuthNav() {
             userId={userId}
             email={email}
             userMetadata={userMetadata}
+            isPro={isPro}
             updateProfile={updateProfile}
             deleteAccount={deleteAccount}
             onLogout={onLogout}

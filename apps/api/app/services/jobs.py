@@ -316,48 +316,6 @@ def _strict_chord_only_notes(
     return strict_notes
 
 
-def _extract_stem_midis(
-    analyzed_notes: list[dict[str, int | float | str]],
-    output_dir: Path,
-    targets: list[str],
-) -> dict[str, Path]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    strict_chord_keys = {
-        _note_identity(note) for note in _strict_chord_only_notes(analyzed_notes)
-    }
-
-    stems: dict[str, pretty_midi.PrettyMIDI] = {}
-    for target in targets:
-        stem_midi = pretty_midi.PrettyMIDI()
-        stem_midi.instruments.append(pretty_midi.Instrument(program=0, is_drum=False))
-        stems[target] = stem_midi
-
-    for note in analyzed_notes:
-        lane = str(note["lane"])
-        if lane not in stems:
-            continue
-        if not _target_filter(lane, note):
-            continue
-        if lane == "chord" and _note_identity(note) not in strict_chord_keys:
-            continue
-        stems[lane].instruments[0].notes.append(
-            pretty_midi.Note(
-                velocity=int(note["velocity"]),
-                pitch=int(note["pitch"]),
-                start=float(note["start"]),
-                end=float(note["end"]),
-            )
-        )
-
-    output_paths: dict[str, Path] = {}
-    for target, midi in stems.items():
-        output_path = output_dir / f"{target}.mid"
-        midi.write(str(output_path))
-        output_paths[target] = output_path
-
-    return output_paths
-
-
 def _collect_preview_notes(
     analyzed_notes: list[dict[str, int | float | str]],
     allowed_lanes: set[str],
@@ -704,14 +662,9 @@ async def process_project(
             transcribed_targets: dict[str, Path] = {}
             midi_confidence: dict[str, float] = {}
             target_quality: dict[str, dict[str, float | bool]] = {}
-            should_separate = False
-            if not is_midi_input:
-                should_separate = feature == "extraction" or (feature == "variation" and variation_target != "full")
-                if feature == "extraction":
-                    requested_stems = {value.strip().lower() for value in extract_targets if value.strip()}
-                    if requested_stems == {"other"}:
-                        should_separate = False
-                        separation_skipped_reason = "only_other_selected"
+            should_separate = (
+                not is_midi_input and feature == "variation" and variation_target != "full"
+            )
 
             if should_separate:
                 repository.set_project_progress(project_id, 30, "Separating stems")
@@ -725,27 +678,7 @@ async def process_project(
                         settings.demucs_device_preference,
                     )
                     separated_stems = separation_result.stem_paths
-                    if feature == "extraction" and extract_targets:
-                        selected_stems = set(extract_targets)
-                        filtered_stems = {
-                            stem_name: stem_path
-                            for stem_name, stem_path in separated_stems.items()
-                            if stem_name in selected_stems
-                        }
-                        if filtered_stems:
-                            separated_stems = filtered_stems
-                            separation_result = StemSeparationResult(
-                                model_name=separation_result.model_name,
-                                requested_device=separation_result.requested_device,
-                                used_device=separation_result.used_device,
-                                stem_paths=filtered_stems,
-                                stem_metadata={
-                                    stem_name: metadata
-                                    for stem_name, metadata in separation_result.stem_metadata.items()
-                                    if stem_name in filtered_stems
-                                },
-                            )
-                    if separated_stems and feature != "extraction":
+                    if separated_stems:
                         repository.set_project_progress(project_id, 40, "Detecting instruments")
                         instrument_detection = await asyncio.to_thread(detect_instruments_from_stems, separated_stems)
                 except Exception as exc:
@@ -756,197 +689,56 @@ async def process_project(
             elif not is_midi_input and feature == "variation" and variation_target == "full":
                 separation_skipped_reason = "variation_full_target"
 
-            if feature == "extraction":
-                if not separated_stems:
-                    separated_stems = {"other": input_audio}
-
-                repository.set_project_progress(project_id, 45, "Exporting stems to MP3")
-                stem_audio_urls: dict[str, str] = {}
-                for stem_name, stem_path in separated_stems.items():
-                    if stem_path.suffix.lower() == ".mp3":
-                        mp3_path = stem_path
-                    else:
-                        mp3_path = await asyncio.to_thread(
-                            _wav_to_mp3,
-                            stem_path,
-                            temp_path / "stems_mp3" / f"{stem_name}.mp3",
-                        )
-                    stem_audio_urls[stem_name] = storage.upload_audio(
-                        f"{user_id}/{project_id}/stems/{stem_name}.mp3",
-                        mp3_path,
-                        "audio/mpeg",
-                    )
-
-                repository.set_project_progress(project_id, 70, "Saving stem metadata")
-                source_audio_url = storage.upload_audio(
-                    f"{user_id}/{project_id}/source/{file_name}",
-                    input_audio,
-                    content_type or "application/octet-stream",
-                )
-
-                analysis_payload = {
-                    "bpm": analysis.bpm if analysis else 0.0,
-                    "key": analysis.key if analysis else "Unknown",
-                    "chord_suggestions": chord_suggestions,
-                    "detected_instruments": instrument_detection.detected_instruments if instrument_detection else [],
-                    "midi_confidence": {},
-                    "target_quality": {},
-                    "separation": {
-                        "model": separation_result.model_name,
-                        "requested_device": separation_result.requested_device,
-                        "used_device": separation_result.used_device,
-                        "stems": list(separation_result.stem_paths.keys()),
-                        "metadata": separation_result.stem_metadata,
-                    } if separation_result else {
-                        "model": "skipped" if separation_skipped_reason else "fallback",
-                        "requested_device": "cpu",
-                        "used_device": "cpu" if separation_skipped_reason else "failed",
-                        "stems": ["other"],
-                        "metadata": {
-                            "other": {
-                                "path": str(input_audio),
-                                "source_model": "fallback",
-                                "requested_device": "cpu",
-                                "used_device": "cpu" if separation_skipped_reason else "failed",
-                                "error": separation_error or separation_skipped_reason or "unknown",
-                            }
-                        },
-                    },
-                    "confidence": {
-                        "bpm": analysis.bpm_confidence if analysis else 0.0,
-                        "key": analysis.key_confidence if analysis else 0.0,
-                    },
-                }
-
-                analysis_json_url = storage.upload_analysis(
-                    f"{user_id}/{project_id}/analysis/result.json",
-                    analysis_payload,
-                )
-
-                assets_payload = {
-                    "source_audio_url": source_audio_url,
-                    "midi_base_url": None,
-                    "midi_variation_urls": [],
-                    "analysis_json_url": analysis_json_url,
-                    "midi_stem_urls": {},
-                    "midi_preview_notes": [],
-                    "stem_audio_urls": stem_audio_urls,
-                }
-
-                repository.set_project_progress(project_id, 98, "Finalizing stems")
-                repository.complete_project(project_id, analysis_payload, assets_payload)
-                repository.set_project_progress(project_id, 100, "Stems ready")
-                return
-
             midi_dir = temp_path / "midi"
             if is_midi_input:
                 base_midi = midi_dir / "base.mid"
                 base_midi.parent.mkdir(parents=True, exist_ok=True)
                 base_midi.write_bytes(raw_bytes)
             elif feature == "extraction":
-                for target in extract_targets:
-                    repository.set_project_progress(project_id, 48, f"Transcribing {target}")
-                    source_audio = _target_audio_with_detection(
-                        target=target,
-                        stems=separated_stems,
-                        detection=instrument_detection,
-                        fallback_audio=input_audio,
-                        output_path=midi_dir / "extraction" / target / f"{Path(file_name).stem}_{target}_mix.wav",
-                    )
-                    if target == "chord":
-                        source_audio = await asyncio.to_thread(
-                            preprocess_harmonic_audio,
-                            source_audio,
-                            midi_dir / "extraction" / target / f"{Path(file_name).stem}_chord_harmonic.wav",
-                        )
-                    elif target == "melody":
-                        source_audio = await asyncio.to_thread(
-                            preprocess_harmonic_audio,
-                            source_audio,
-                            midi_dir / "extraction" / target / f"{Path(file_name).stem}_melody_harmonic.wav",
-                        )
-                    elif target in {"piano", "guitar"}:
-                        source_audio = await asyncio.to_thread(
-                            preprocess_harmonic_audio,
-                            source_audio,
-                            midi_dir / "extraction" / target / f"{Path(file_name).stem}_{target}_harmonic.wav",
-                        )
-                    raw_target_midi = await asyncio.to_thread(
-                        transcribe_to_midi,
-                        source_audio,
-                        midi_dir / "extraction" / target / "raw",
-                    )
-                    transcription_confidence = await asyncio.to_thread(
-                        evaluate_transcription_confidence,
-                        raw_target_midi,
-                    )
+                # No stem separation for extraction anymore (the KeyTone Studio
+                # desktop app covers stems) -- transcribe melody directly from
+                # the full mix, since that's the most accurate single target
+                # for polyphonic source audio.
+                repository.set_project_progress(project_id, 48, "Transcribing melody")
+                melody_source = await asyncio.to_thread(
+                    preprocess_harmonic_audio,
+                    input_audio,
+                    midi_dir / "extraction" / "melody" / f"{Path(file_name).stem}_melody_harmonic.wav",
+                )
+                melody_midi = await asyncio.to_thread(
+                    transcribe_to_midi,
+                    melody_source,
+                    midi_dir / "extraction" / "melody" / "raw",
+                )
+                transcribed_targets["melody"] = melody_midi
+                midi_confidence["melody"] = await asyncio.to_thread(
+                    evaluate_transcription_confidence,
+                    melody_midi,
+                )
 
-                    if target in {"piano", "guitar"}:
-                        stem_metrics = await asyncio.to_thread(analyze_stem_audio_quality, source_audio)
-                        quality = await asyncio.to_thread(
-                            score_target_stem_quality,
-                            stem_metrics,
-                            transcription_confidence,
-                        )
-                        target_quality[target] = {
-                            "rms_energy": quality.rms_energy,
-                            "harmonic_ratio": quality.harmonic_ratio,
-                            "onset_density": quality.onset_density,
-                            "sustained_ratio": quality.sustained_ratio,
-                            "quality_score": quality.quality_score,
-                            "transcription_confidence": quality.transcription_confidence,
-                            "passed": quality.passed,
-                        }
+                repository.set_project_progress(project_id, 58, "Transcribing chords")
+                chord_source = await asyncio.to_thread(
+                    preprocess_harmonic_audio,
+                    input_audio,
+                    midi_dir / "extraction" / "chord" / f"{Path(file_name).stem}_chord_harmonic.wav",
+                )
+                chord_raw = await asyncio.to_thread(
+                    transcribe_to_midi,
+                    chord_source,
+                    midi_dir / "extraction" / "chord" / "raw",
+                )
+                chord_clean = await asyncio.to_thread(
+                    cleanup_chord_midi,
+                    chord_raw,
+                    midi_dir / "extraction" / "chord" / "clean_chord.mid",
+                )
+                transcribed_targets["chord"] = chord_clean
+                midi_confidence["chord"] = await asyncio.to_thread(
+                    evaluate_transcription_confidence,
+                    chord_clean,
+                )
 
-                        if not quality.passed:
-                            continue
-
-                    if target == "chord":
-                        target_midi = await asyncio.to_thread(
-                            cleanup_chord_midi,
-                            raw_target_midi,
-                            midi_dir / "extraction" / target / "clean_chord.mid",
-                        )
-                    else:
-                        target_midi = raw_target_midi
-                    transcribed_targets[target] = target_midi
-                    midi_confidence[target] = transcription_confidence
-
-                if "chord" not in transcribed_targets:
-                    chord_source = _target_audio_with_detection(
-                        target="chord",
-                        stems=separated_stems,
-                        detection=instrument_detection,
-                        fallback_audio=input_audio,
-                        output_path=midi_dir / "extraction" / "chord" / f"{Path(file_name).stem}_chord_mix.wav",
-                    )
-                    chord_source = await asyncio.to_thread(
-                        preprocess_harmonic_audio,
-                        chord_source,
-                        midi_dir / "extraction" / "chord" / f"{Path(file_name).stem}_chord_fallback_harmonic.wav",
-                    )
-                    chord_raw = await asyncio.to_thread(
-                        transcribe_to_midi,
-                        chord_source,
-                        midi_dir / "extraction" / "chord" / "raw_fallback",
-                    )
-                    chord_clean = await asyncio.to_thread(
-                        cleanup_chord_midi,
-                        chord_raw,
-                        midi_dir / "extraction" / "chord" / "clean_chord_fallback.mid",
-                    )
-                    transcribed_targets["chord"] = chord_clean
-                    midi_confidence["chord"] = await asyncio.to_thread(
-                        evaluate_transcription_confidence,
-                        chord_clean,
-                    )
-
-                if not transcribed_targets:
-                    raise RuntimeError("No extraction targets could be transcribed")
-
-                preferred_order = ["melody", "chord", "piano", "guitar", "bass"]
-                preferred_target = next((target for target in preferred_order if target in transcribed_targets), extract_targets[0])
-                base_midi = transcribed_targets[preferred_target]
+                base_midi = transcribed_targets["melody"]
             else:
                 repository.set_project_progress(project_id, 55, "Transcribing target")
                 transcription_source = (
@@ -1005,17 +797,10 @@ async def process_project(
             stem_paths: dict[str, Path] = {}
             if feature == "extraction":
                 repository.set_project_progress(project_id, 80, "Building output stems")
-                if transcribed_targets:
-                    stem_paths = {
-                        target: path
-                        for target, path in transcribed_targets.items()
-                        if target in set(extract_targets) | {"chord"}
-                    }
-                else:
-                    stem_paths = await asyncio.to_thread(_extract_stem_midis, analyzed_notes, midi_dir / "stems", extract_targets)
+                stem_paths = dict(transcribed_targets)
 
             if feature == "extraction":
-                allowed_preview_lanes = set(extract_targets) | {"chord"}
+                allowed_preview_lanes = {"melody", "chord"}
             else:
                 allowed_preview_lanes = {variation_target} if variation_target != "full" else {"melody", "chord", "bass"}
 
@@ -1393,127 +1178,142 @@ async def alter_variation_midi(
     alter_seed = secrets.randbelow(2_147_483_647) + 1
 
     repository.set_project_processing(project_id)
-    repository.set_project_progress(project_id, 45, f"Altering {target} MIDI ({intent})")
 
-    with tempfile.TemporaryDirectory(prefix="keytone_variation_alter_") as temp_dir:
-        temp_path = Path(temp_dir)
-        base_midi_path = await asyncio.to_thread(
-            _download_file_to_path,
-            base_midi_url,
-            temp_path / "base.mid",
-        )
+    try:
+        repository.set_project_progress(project_id, 45, f"Altering {target} MIDI ({intent})")
 
-        alter_render = await asyncio.to_thread(
-            alter_midi,
-            base_midi_path,
-            temp_path / "altered" / f"{target}.mid",
-            key,
-            target,
-            bpm,
-            alter_count,
-            alter_seed,
-            style,
-            creativity,
-            intent,
-            variation_strength,
-            preserve_identity,
-            lane_move,
-        )
-        altered_midi_path = alter_render["best_path"]
-
-        repository.set_project_progress(project_id, 80, "Uploading altered MIDI")
-        altered_url = storage.upload_midi(
-            f"{user_id}/{project_id}/midi/altered/{target}.mid",
-            altered_midi_path,
-        )
-
-        candidate_urls: list[str] = []
-        candidate_paths = list(alter_render.get("candidate_paths") or [])
-        candidate_profiles = list(alter_render.get("candidate_profiles") or [])
-        for idx, candidate_path in enumerate(candidate_paths):
-            profile = (
-                candidate_profiles[idx]
-                if idx < len(candidate_profiles)
-                else f"candidate_{idx + 1}"
+        with tempfile.TemporaryDirectory(prefix="keytone_variation_alter_") as temp_dir:
+            temp_path = Path(temp_dir)
+            base_midi_path = await asyncio.to_thread(
+                _download_file_to_path,
+                base_midi_url,
+                temp_path / "base.mid",
             )
-            candidate_urls.append(
-                storage.upload_midi(
-                    f"{user_id}/{project_id}/midi/altered/{target}_{idx + 1}_{profile}.mid",
-                    Path(candidate_path),
+
+            # Detect the base MIDI's *actual current* key directly, rather than
+            # trusting project.analysis.key -- that field gets overwritten with
+            # the previous alter's target key, but every alter always re-reads
+            # the original, untransposed base MIDI, so a stale stored key would
+            # compute the wrong transposition offset on a second+ alter.
+            _base_bpm, detected_source_key, _base_bpm_conf, _base_key_conf = (
+                await asyncio.to_thread(_estimate_midi_bpm_key, base_midi_path)
+            )
+
+            alter_render = await asyncio.to_thread(
+                alter_midi,
+                base_midi_path,
+                temp_path / "altered" / f"{target}.mid",
+                key,
+                target,
+                bpm,
+                alter_count,
+                alter_seed,
+                style,
+                creativity,
+                intent,
+                variation_strength,
+                preserve_identity,
+                lane_move,
+                detected_source_key,
+            )
+            altered_midi_path = alter_render["best_path"]
+
+            repository.set_project_progress(project_id, 80, "Uploading altered MIDI")
+            altered_url = storage.upload_midi(
+                f"{user_id}/{project_id}/midi/altered/{target}.mid",
+                altered_midi_path,
+            )
+
+            candidate_urls: list[str] = []
+            candidate_paths = list(alter_render.get("candidate_paths") or [])
+            candidate_profiles = list(alter_render.get("candidate_profiles") or [])
+            for idx, candidate_path in enumerate(candidate_paths):
+                profile = (
+                    candidate_profiles[idx]
+                    if idx < len(candidate_profiles)
+                    else f"candidate_{idx + 1}"
                 )
+                candidate_urls.append(
+                    storage.upload_midi(
+                        f"{user_id}/{project_id}/midi/altered/{target}_{idx + 1}_{profile}.mid",
+                        Path(candidate_path),
+                    )
+                )
+
+            base_notes = await asyncio.to_thread(
+                _collect_exact_midi_preview_notes,
+                base_midi_path,
+                None,
+                None,
+            )
+            altered_notes = await asyncio.to_thread(
+                _collect_exact_midi_preview_notes,
+                altered_midi_path,
+                None,
+                None,
+            )
+            original_chord_events, original_chord_progression = await asyncio.to_thread(
+                _extract_chord_events_from_midi,
+                base_midi_path,
+            )
+            altered_chord_events, altered_chord_progression = await asyncio.to_thread(
+                _extract_chord_events_from_midi,
+                altered_midi_path,
             )
 
-        base_notes = await asyncio.to_thread(
-            _collect_exact_midi_preview_notes,
-            base_midi_path,
-            None,
-            None,
-        )
-        altered_notes = await asyncio.to_thread(
-            _collect_exact_midi_preview_notes,
-            altered_midi_path,
-            None,
-            None,
-        )
-        original_chord_events, original_chord_progression = await asyncio.to_thread(
-            _extract_chord_events_from_midi,
-            base_midi_path,
-        )
-        altered_chord_events, altered_chord_progression = await asyncio.to_thread(
-            _extract_chord_events_from_midi,
-            altered_midi_path,
-        )
+            assets = project.assets.model_dump(mode="python")
+            assets["altered_midi_url"] = altered_url
+            assets["midi_variation_urls"] = candidate_urls
+            assets["original_midi_preview_notes"] = base_notes
+            assets["altered_midi_preview_notes"] = altered_notes
+            assets["midi_preview_notes"] = altered_notes
 
-        assets = project.assets.model_dump(mode="python")
-        assets["altered_midi_url"] = altered_url
-        assets["midi_variation_urls"] = candidate_urls
-        assets["original_midi_preview_notes"] = base_notes
-        assets["altered_midi_preview_notes"] = altered_notes
-        assets["midi_preview_notes"] = altered_notes
+            analysis = project.analysis.model_dump(mode="python") if project.analysis else {
+                "bpm": 0.0,
+                "key": key,
+                "chord_suggestions": [],
+                "detected_chord_events": [],
+                "detected_chord_progression": [],
+                "altered_chord_events": [],
+                "altered_chord_progression": [],
+                "detected_instruments": [],
+                "midi_confidence": {},
+                "target_quality": {},
+                "separation": None,
+                "confidence": {"bpm": 0.0, "key": 0.0},
+            }
+            analysis["key"] = key
+            if bpm is not None:
+                analysis["bpm"] = float(bpm)
+            analysis["detected_chord_events"] = original_chord_events
+            analysis["detected_chord_progression"] = original_chord_progression
+            analysis["altered_chord_events"] = altered_chord_events
+            analysis["altered_chord_progression"] = altered_chord_progression
 
-        analysis = project.analysis.model_dump(mode="python") if project.analysis else {
-            "bpm": 0.0,
-            "key": key,
-            "chord_suggestions": [],
-            "detected_chord_events": [],
-            "detected_chord_progression": [],
-            "altered_chord_events": [],
-            "altered_chord_progression": [],
-            "detected_instruments": [],
-            "midi_confidence": {},
-            "target_quality": {},
-            "separation": None,
-            "confidence": {"bpm": 0.0, "key": 0.0},
-        }
-        analysis["key"] = key
-        if bpm is not None:
-            analysis["bpm"] = float(bpm)
-        analysis["detected_chord_events"] = original_chord_events
-        analysis["detected_chord_progression"] = original_chord_progression
-        analysis["altered_chord_events"] = altered_chord_events
-        analysis["altered_chord_progression"] = altered_chord_progression
+            options["variation_target"] = target
+            options["variation_key"] = key
+            options["variation_intent"] = intent
+            if variation_strength is not None:
+                options["variation_strength"] = float(variation_strength)
+            if preserve_identity is not None:
+                options["variation_preserve_identity"] = float(preserve_identity)
+            options["variation_lane_move"] = lane_move
+            options["variation_candidate_labels"] = list(alter_render.get("candidate_labels") or [])
+            options["variation_candidate_scores"] = [
+                float(score) for score in list(alter_render.get("candidate_scores") or [])
+            ]
+            options["variation_best_label"] = str(alter_render.get("best_label") or "")
+            options["variation_style"] = style
+            if creativity is not None:
+                options["variation_creativity"] = float(creativity)
+            options["variation_alter_count"] = alter_count
+            options["variation_alter_seed"] = alter_seed
+            if bpm is not None:
+                options["variation_bpm"] = float(bpm)
 
-        options["variation_target"] = target
-        options["variation_key"] = key
-        options["variation_intent"] = intent
-        if variation_strength is not None:
-            options["variation_strength"] = float(variation_strength)
-        if preserve_identity is not None:
-            options["variation_preserve_identity"] = float(preserve_identity)
-        options["variation_lane_move"] = lane_move
-        options["variation_candidate_labels"] = list(alter_render.get("candidate_labels") or [])
-        options["variation_candidate_scores"] = [
-            float(score) for score in list(alter_render.get("candidate_scores") or [])
-        ]
-        options["variation_best_label"] = str(alter_render.get("best_label") or "")
-        options["variation_style"] = style
-        if creativity is not None:
-            options["variation_creativity"] = float(creativity)
-        options["variation_alter_count"] = alter_count
-        options["variation_alter_seed"] = alter_seed
-        if bpm is not None:
-            options["variation_bpm"] = float(bpm)
-
-        repository.complete_project(project_id, analysis, assets)
-        repository.set_project_progress(project_id, 100, "Altered MIDI ready")
-        repository.set_project_options(project_id, options)
+            repository.complete_project(project_id, analysis, assets)
+            repository.set_project_progress(project_id, 100, "Altered MIDI ready")
+            repository.set_project_options(project_id, options)
+    except Exception as exc:
+        repository.set_project_progress(project_id, 100, "Failed")
+        repository.fail_project(project_id, str(exc))

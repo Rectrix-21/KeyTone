@@ -11,6 +11,7 @@ interface ProfileMenuProps {
   userId: string | null;
   email: string | null;
   userMetadata: CurrentUserMetadata | null;
+  isPro: boolean;
   updateProfile: CurrentUserState["updateProfile"];
   deleteAccount: CurrentUserState["deleteAccount"];
   onLogout: () => Promise<void>;
@@ -29,6 +30,7 @@ export function ProfileMenu({
   userId,
   email,
   userMetadata,
+  isPro,
   updateProfile,
   deleteAccount,
   onLogout,
@@ -166,7 +168,7 @@ export function ProfileMenu({
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
-        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-cyan-400/30 bg-cyan-500/15 text-xs font-semibold text-cyan-100"
+        className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-cyan-400/30 bg-cyan-500/15 text-xs font-semibold text-cyan-100"
         aria-label="Open profile menu"
       >
         {avatarUrl ? (
@@ -181,6 +183,14 @@ export function ProfileMenu({
         ) : (
           <UserRound className="h-4 w-4" />
         )}
+        {isPro ? (
+          <span
+            className="absolute -bottom-0.5 -right-0.5 rounded-full border border-black/60 bg-fuchsia-500 px-[3px] py-px text-[7px] font-bold leading-none text-white shadow-[0_0_6px_rgba(217,70,239,0.7)]"
+            aria-hidden="true"
+          >
+            PRO
+          </span>
+        ) : null}
       </button>
 
       {isOpen ? (
@@ -200,7 +210,14 @@ export function ProfileMenu({
                 <UserRound className="h-5 w-5" />
               )}
             </div>
-            <span className="truncate text-cyan-100/80">{email}</span>
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className="truncate text-cyan-100/80">{email}</span>
+              {isPro ? (
+                <span className="inline-flex w-fit items-center rounded-full border border-fuchsia-300/45 bg-fuchsia-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-fuchsia-100">
+                  Pro
+                </span>
+              ) : null}
+            </div>
           </div>
 
           <div className="space-y-1.5">

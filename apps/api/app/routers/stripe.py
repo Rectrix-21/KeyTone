@@ -4,7 +4,11 @@ from stripe import SignatureVerificationError
 from app.dependencies.auth import AuthUser, CurrentUser
 from app.schemas.models import CheckoutResponse
 from app.services.repository import Repository
-from app.services.stripe_service import create_checkout_session, handle_webhook
+from app.services.stripe_service import (
+    create_checkout_session,
+    create_portal_session,
+    handle_webhook,
+)
 
 router = APIRouter(prefix="/v1/stripe", tags=["stripe"])
 
@@ -22,6 +26,21 @@ async def create_checkout(user: AuthUser = CurrentUser) -> CheckoutResponse:
 
     checkout_url = create_checkout_session(user.id, user.email)
     return CheckoutResponse(checkout_url=checkout_url)
+
+
+@router.post("/create-portal-session", response_model=CheckoutResponse)
+async def create_portal(user: AuthUser = CurrentUser) -> CheckoutResponse:
+    repository = Repository()
+    profile = repository.get_profile(user.id)
+    customer_id = profile.get("stripe_customer_id")
+    if not customer_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No billing account on file yet for this user.",
+        )
+
+    portal_url = create_portal_session(customer_id)
+    return CheckoutResponse(checkout_url=portal_url)
 
 
 @router.post("/webhook")

@@ -364,6 +364,29 @@ def _nearest_scale_note(note: int, root: int, mode: str) -> int:
     return clipped
 
 
+def _transpose_pitch(
+    pitch: int,
+    source_root: int,
+    target_root: int,
+    target_mode: str,
+) -> int:
+    """Move a note from the source key to the target key.
+
+    Shifts by the shortest chromatic interval between the two roots first,
+    so the melodic contour and every original interval between notes is
+    preserved (real transposition, not independent per-note scale-snapping).
+    A note that was diatonic in the source key lands exactly on a diatonic
+    target-key tone after this shift whenever the mode is unchanged, so the
+    scale-snap that follows is a no-op for it. When the mode also changes
+    (major<->minor), the snap corrects only the 3 degrees that actually
+    differ between the two scales (3rd/6th/7th), by at most a semitone.
+    """
+    raw_shift = (target_root - source_root) % 12
+    shift = raw_shift - 12 if raw_shift > 6 else raw_shift
+    shifted = int(_clamp(float(pitch + shift), 0, 127))
+    return _nearest_scale_note(shifted, target_root, target_mode)
+
+
 def _lane_for_pitch(pitch: int) -> str:
     if pitch < 52:
         return "bass"
@@ -1498,7 +1521,9 @@ def _retune_all_non_drum(
     key_root: int,
     mode: str,
     retune_lanes: set[str] | None = None,
+    source_key_root: int | None = None,
 ) -> None:
+    src_root = source_key_root if source_key_root is not None else key_root
     for instrument in midi.instruments:
         if instrument.is_drum:
             continue
@@ -1506,7 +1531,9 @@ def _retune_all_non_drum(
             lane = _lane_for_pitch(int(note.pitch))
             should_retune = retune_lanes is None or lane in retune_lanes
             if should_retune:
-                note.pitch = _nearest_scale_note(int(note.pitch), key_root, mode)
+                note.pitch = _transpose_pitch(
+                    int(note.pitch), src_root, key_root, mode
+                )
             note.start = max(0.0, float(note.start))
             note.end = max(note.start + 0.03, float(note.end))
             note.velocity = int(_clamp(note.velocity, 12, 127))
@@ -1518,6 +1545,7 @@ def _build_candidate(
     base_analysis: VariationAnalysis,
     key_root: int,
     mode: str,
+    source_key_root: int,
     target: LaneTarget,
     target_bpm: float,
     time_scale: float,
@@ -1594,7 +1622,9 @@ def _build_candidate(
     if creative_layers > 0:
         move_labels.append(f"Creative Layer x{creative_layers}")
 
-    _retune_all_non_drum(midi, key_root, mode, set(selected_lanes))
+    _retune_all_non_drum(
+        midi, key_root, mode, set(selected_lanes), source_key_root
+    )
     candidate_analysis = _analyze_identity(midi, key_root, mode, target)
     scores = _score_candidate(
         source_midi=source,
@@ -1630,9 +1660,13 @@ def alter_midi(
     variation_strength: float | None = None,
     preserve_identity: float | None = None,
     lane_move: str | None = None,
+    source_key: str | None = None,
 ) -> AlterMidiResult:
     source = pretty_midi.PrettyMIDI(str(base_midi_path))
     key_root, mode = _key_to_root_and_mode(key)
+    source_key_root, _source_mode = (
+        _key_to_root_and_mode(source_key) if source_key else (key_root, mode)
+    )
     original_bpm = _first_tempo(source)
     target_bpm = max(40.0, min(260.0, float(bpm))) if bpm else original_bpm
     time_scale = original_bpm / target_bpm if target_bpm > 0 else 1.0
@@ -1662,6 +1696,7 @@ def alter_midi(
             base_analysis=base_analysis,
             key_root=key_root,
             mode=mode,
+            source_key_root=source_key_root,
             target=target_lane,
             target_bpm=target_bpm,
             time_scale=time_scale,

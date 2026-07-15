@@ -118,6 +118,16 @@ export async function createCheckout(accessToken: string) {
   );
 }
 
+export async function createPortalSession(accessToken: string) {
+  return request<{ checkout_url: string }>(
+    "/v1/stripe/create-portal-session",
+    {
+      method: "POST",
+    },
+    accessToken,
+  );
+}
+
 export async function uploadProject(
   file: File,
   accessToken: string,

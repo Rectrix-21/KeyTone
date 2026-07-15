@@ -1,6 +1,6 @@
 "use client";
 
-import { createCheckout, getMe } from "@/lib/api/client";
+import { createCheckout, createPortalSession, getMe } from "@/lib/api/client";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 export default function PricingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [manageLoading, setManageLoading] = useState(false);
   const [startFreeLoading, setStartFreeLoading] = useState(false);
   const [checkingPlan, setCheckingPlan] = useState(true);
   const [isActivePro, setIsActivePro] = useState(false);
@@ -69,12 +70,6 @@ export default function PricingPage() {
 
   const onUpgrade = async () => {
     setError(null);
-
-    if (isActivePro) {
-      router.push("/dashboard");
-      return;
-    }
-
     setLoading(true);
     const supabase = createClient();
     const { data } = await supabase.auth.getSession();
@@ -100,6 +95,31 @@ export default function PricingPage() {
             : "Failed to start checkout",
       );
       setLoading(false);
+    }
+  };
+
+  const onManageSubscription = async () => {
+    setError(null);
+    setManageLoading(true);
+    const supabase = createClient();
+    const { data } = await supabase.auth.getSession();
+
+    if (!data.session?.access_token) {
+      setManageLoading(false);
+      router.push("/login");
+      return;
+    }
+
+    try {
+      const response = await createPortalSession(data.session.access_token);
+      window.location.href = response.checkout_url;
+    } catch (portalError) {
+      setError(
+        portalError instanceof Error
+          ? portalError.message
+          : "Failed to open billing portal",
+      );
+      setManageLoading(false);
     }
   };
 
@@ -205,14 +225,18 @@ export default function PricingPage() {
 
             <div className="mt-8">
               <button
-                onClick={onUpgrade}
-                disabled={loading || checkingPlan || isActivePro}
+                onClick={() =>
+                  void (isActivePro ? onManageSubscription() : onUpgrade())
+                }
+                disabled={loading || checkingPlan || manageLoading}
                 className="cyber-btn-primary inline-flex w-full justify-center rounded-xl px-4 py-3 text-base font-medium disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {checkingPlan
                   ? "Checking plan..."
                   : isActivePro
-                    ? "Already on Pro"
+                    ? manageLoading
+                      ? "Opening billing portal..."
+                      : "Manage Subscription"
                     : loading
                       ? "Redirecting..."
                       : "Upgrade to Pro"}

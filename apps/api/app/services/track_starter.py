@@ -1567,12 +1567,107 @@ def _quality_for_degree(mode: Literal["major", "minor"], degree: int) -> Literal
     return lookup.get(degree, "maj")
 
 
+_REFERENCE_RICHNESS_KEYWORDS: dict[str, float] = {
+    "warm": 0.15,
+    "lush": 0.2,
+    "emotional": 0.15,
+    "soulful": 0.2,
+    "rich": 0.2,
+    "dreamy": 0.15,
+    "cinematic": 0.15,
+    "atmospheric": 0.15,
+    "romantic": 0.1,
+    "neo-soul": 0.2,
+    "neosoul": 0.2,
+    "jazzy": 0.2,
+    "lo-fi": 0.1,
+    "lofi": 0.1,
+    "smooth": 0.12,
+    "silky": 0.15,
+    "minimal": -0.2,
+    "simple": -0.15,
+    "clean": -0.1,
+    "sparse": -0.2,
+    "stripped": -0.15,
+    "bare": -0.15,
+    "raw": -0.1,
+    "plain": -0.15,
+    "basic": -0.1,
+}
+
+_REFERENCE_ENERGETIC_KEYWORDS = {
+    "energetic",
+    "upbeat",
+    "driving",
+    "fast",
+    "intense",
+    "aggressive",
+    "hype",
+    "powerful",
+    "punchy",
+    "banger",
+}
+
+_REFERENCE_CALM_KEYWORDS = {
+    "calm",
+    "gentle",
+    "soft",
+    "mellow",
+    "slow",
+    "chill",
+    "relaxed",
+    "peaceful",
+    "ambient",
+    "sleepy",
+    "quiet",
+}
+
+
+def _analyze_reference_description(text: str) -> tuple[float, int, list[str]]:
+    """Derive generation biases from the free-text reference description.
+
+    This is a rule-based generator, not an LLM, so it can't truly
+    "understand" the description -- instead it scans for a curated set of
+    descriptive keywords and turns them into real adjustments to chord
+    richness (more/fewer extensions) and rhythmic energy (busier/sparser
+    patterns), so the field actually changes the generated output rather
+    than only appearing in the displayed explanation text.
+    """
+    if not text or not text.strip():
+        return 0.0, 0, []
+
+    lowered = text.lower()
+    matched: list[str] = []
+
+    richness = 0.0
+    for keyword, weight in _REFERENCE_RICHNESS_KEYWORDS.items():
+        if keyword in lowered:
+            richness += weight
+            matched.append(keyword)
+    richness = max(-0.3, min(0.3, richness))
+
+    energy = 0
+    if any(keyword in lowered for keyword in _REFERENCE_ENERGETIC_KEYWORDS):
+        energy += 1
+        matched.extend(
+            keyword for keyword in _REFERENCE_ENERGETIC_KEYWORDS if keyword in lowered
+        )
+    if any(keyword in lowered for keyword in _REFERENCE_CALM_KEYWORDS):
+        energy -= 1
+        matched.extend(
+            keyword for keyword in _REFERENCE_CALM_KEYWORDS if keyword in lowered
+        )
+
+    return richness, energy, matched
+
+
 def _extension_for_chord(
     genre: str,
     quality: Literal["maj", "min", "dim"],
     complexity: ComplexityLevel,
     variant: StarterVariant,
     rng: random.Random,
+    richness_bias: float = 0.0,
 ) -> Literal["triad", "7", "9"]:
     if quality == "dim":
         return "triad"
@@ -1587,7 +1682,9 @@ def _extension_for_chord(
 
     complexity_bias = {"simple": -0.2, "medium": 0.0, "complex": 0.14}[complexity]
     variant_bias = {"safe": -0.14, "fresh": 0.0, "experimental": 0.18}[variant]
-    chance = max(0.0, min(0.95, base_prob + complexity_bias + variant_bias))
+    chance = max(
+        0.0, min(0.95, base_prob + complexity_bias + variant_bias + richness_bias)
+    )
 
     if rng.random() > chance:
         return "triad"
@@ -1718,16 +1815,24 @@ def generate_chords(
     complexity: ComplexityLevel,
     variant: StarterVariant,
     rng: random.Random,
+    reference_description: str = "",
 ) -> tuple[list[NoteEvent], list[ChordPlan], list[str]]:
-    templates = PROGRESSION_TEMPLATES.get(genre, PROGRESSION_TEMPLATES["default"]) 
+    templates = PROGRESSION_TEMPLATES.get(genre, PROGRESSION_TEMPLATES["default"])
     progression = rng.choice(templates[mode])
     degrees = _bar_degrees(bars, progression, mode, mood)
+
+    richness_bias, energy_bias, _matched_keywords = _analyze_reference_description(
+        reference_description
+    )
 
     beat_sec = 60.0 / bpm
     rhythm_bank = CHORD_RHYTHM_TEMPLATES.get(genre, CHORD_RHYTHM_TEMPLATES["default"])
     max_pattern_index = {"simple": 0, "medium": 1, "complex": len(rhythm_bank) - 1}[complexity]
     if variant == "safe":
         max_pattern_index = min(max_pattern_index, 1 if complexity == "complex" else 0)
+    max_pattern_index = max(
+        0, min(len(rhythm_bank) - 1, max_pattern_index + energy_bias)
+    )
 
     notes: list[NoteEvent] = []
     plan: list[ChordPlan] = []
@@ -1736,7 +1841,9 @@ def generate_chords(
     for bar in range(bars):
         degree = degrees[bar]
         quality = _quality_for_degree(mode, degree)
-        extension = _extension_for_chord(genre, quality, complexity, variant, rng)
+        extension = _extension_for_chord(
+            genre, quality, complexity, variant, rng, richness_bias
+        )
         root_pc = _scale_pc(key_root, mode, degree)
         chord_pitches = _build_chord_pitches(root_pc, quality, extension, complexity, variant, rng)
 
@@ -2480,11 +2587,22 @@ def _compose_explanation(
     }[variant]
 
     short_progression = " - ".join(chord_labels[: min(4, len(chord_labels))])
-    reference_line = (
-        f" Reference mood: {reference_description.strip()}."
-        if reference_description.strip()
-        else ""
-    )
+    detected_keywords = str(candidate_summary.get("reference_keywords_detected", ""))
+    if reference_description.strip() and detected_keywords:
+        reference_line = (
+            f" Reference mood: {reference_description.strip()}. Detected style"
+            f" keywords ({detected_keywords}) nudged chord richness and rhythmic"
+            f" energy."
+        )
+    elif reference_description.strip():
+        reference_line = (
+            f" Reference mood: {reference_description.strip()}."
+            " No specific style keywords recognized in it, so it didn't change"
+            " generation this time -- try words like warm, lush, soulful, minimal,"
+            " energetic, or calm."
+        )
+    else:
+        reference_line = ""
     candidate_line = (
         f" Chord events: {int(candidate_summary.get('chord_events', 0))}."
         f" Generation mode: {str(candidate_summary.get('generation_mode', 'chords_only'))}."
@@ -2536,6 +2654,10 @@ def generate_track_starter_idea(
         complexity=normalized_complexity,
         variant=variant,
         rng=rng,
+        reference_description=reference_description,
+    )
+    _richness_bias, _energy_bias, reference_keywords = _analyze_reference_description(
+        reference_description
     )
 
     generation_backend = "rule_chords"
@@ -2543,6 +2665,9 @@ def generate_track_starter_idea(
         "generation_mode": "chords_only",
         "chord_events": len(chords),
         "chord_labels": len(chord_labels),
+        "reference_richness_bias": round(_richness_bias, 3),
+        "reference_energy_bias": _energy_bias,
+        "reference_keywords_detected": ", ".join(sorted(set(reference_keywords))),
     }
     drum_suggestion = ""
 
