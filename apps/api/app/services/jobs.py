@@ -8,10 +8,8 @@ from typing import Any
 from typing import Literal
 
 import httpx
-import lameenc
 import numpy as np
 import pretty_midi
-import soundfile as sf
 
 from app.core.config import settings
 from app.services.audio_analysis import estimate_bpm_and_key, suggest_chords
@@ -106,26 +104,6 @@ def _select_separation_model(
     if feature == "extraction" and requested and not ({"piano", "guitar"} & requested):
         return "htdemucs"
     return settings.demucs_model
-
-
-def _wav_to_mp3(wav_path: Path, output_path: Path) -> Path:
-    audio, sr = sf.read(str(wav_path), dtype="float32")
-    if audio.ndim > 1:
-        audio = np.mean(audio, axis=1)
-    audio = np.clip(audio, -1.0, 1.0)
-    pcm = (audio * 32767.0).astype(np.int16)
-
-    encoder = lameenc.Encoder()
-    encoder.set_bit_rate(192)
-    encoder.set_in_sample_rate(int(sr))
-    encoder.set_channels(1)
-    encoder.set_quality(2)
-
-    mp3_data = encoder.encode(pcm.tobytes())
-    mp3_data += encoder.flush()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_bytes(mp3_data)
-    return output_path
 
 
 def _download_file_to_path(url: str, output_path: Path) -> Path:

@@ -168,9 +168,6 @@ export function ContactModal({ isOpen, onClose }: ContactModalProps) {
 
         {activeForm === "bug" ? (
           <form onSubmit={onSubmitBug} className="mt-4 space-y-3">
-            <p className="text-xs text-foreground/65">
-              Sent directly to me &mdash; no email app needed.
-            </p>
             <div>
               <label className="text-xs text-foreground/60">
                 Subject (optional)
@@ -213,9 +210,6 @@ export function ContactModal({ isOpen, onClose }: ContactModalProps) {
           </form>
         ) : (
           <form onSubmit={onSubmitFeature} className="mt-4 space-y-3">
-            <p className="text-xs text-foreground/65">
-              Sent directly to me &mdash; no email app needed.
-            </p>
             <div>
               <label className="text-xs text-foreground/60">
                 Subject (optional)

@@ -32,6 +32,25 @@ button {
   text-shadow: 0 0 12px rgba(6, 182, 212, 0.14);
 }
 
+.cyber-btn,
+.cyber-btn-primary {
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 200ms ease,
+    border-color 200ms ease,
+    background-color 200ms ease;
+}
+
+.cyber-btn:hover,
+.cyber-btn-primary:hover {
+  transform: translateY(-1px);
+}
+
+.cyber-btn:active,
+.cyber-btn-primary:active {
+  transform: translateY(0) scale(0.97);
+}
+
 .cyber-btn {
   @apply rounded-md border border-cyan-400/25 bg-black/45 px-4 py-2 text-cyan-100;
   box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.06);
@@ -45,10 +64,29 @@ button {
 }
 
 .cyber-btn-primary {
-  @apply rounded-md border border-cyan-300/40 bg-cyan-500/20 px-4 py-2 text-white;
+  @apply relative overflow-hidden rounded-md border border-cyan-300/40 bg-cyan-500/20 px-4 py-2 text-white;
   box-shadow:
     inset 0 0 0 1px rgba(125, 211, 252, 0.14),
     0 0 14px rgba(8, 145, 178, 0.18);
+}
+
+.cyber-btn-primary::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.22) 50%,
+    transparent 70%
+  );
+  transform: translateX(-120%);
+  transition: transform 650ms ease;
+  pointer-events: none;
+}
+
+.cyber-btn-primary:hover::before {
+  transform: translateX(120%);
 }
 
 .cyber-bg {
@@ -84,18 +122,56 @@ button {
 .cyber-gradient-layer {
   position: absolute;
   inset: 0;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
 }
 
 .cyber-gradient-layer-1 {
   transform: translate3d(-1%, -1%, 0);
+  animation-name: cyber-drift-1;
+  animation-duration: 46s;
 }
 
 .cyber-gradient-layer-2 {
   transform: translate3d(1%, 0, 0);
+  animation-name: cyber-drift-2;
+  animation-duration: 58s;
+  animation-delay: -12s;
 }
 
 .cyber-gradient-layer-3 {
   transform: translate3d(0, 1.5%, 0);
+  animation-name: cyber-drift-3;
+  animation-duration: 52s;
+  animation-delay: -27s;
+}
+
+@keyframes cyber-drift-1 {
+  from {
+    transform: translate3d(-1.6%, -1.8%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(1.4%, 1%, 0) scale(1.04);
+  }
+}
+
+@keyframes cyber-drift-2 {
+  from {
+    transform: translate3d(1.8%, -1.2%, 0) scale(1.02);
+  }
+  to {
+    transform: translate3d(-1.2%, 1.6%, 0) scale(1);
+  }
+}
+
+@keyframes cyber-drift-3 {
+  from {
+    transform: translate3d(-1.4%, 2%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(1.6%, -1%, 0) scale(1.03);
+  }
 }
 
 .cyber-gradient-band {
@@ -138,6 +214,25 @@ button {
   );
 }
 
+.cyber-pointer-glow {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(
+    640px circle at var(--pointer-x, 50%) var(--pointer-y, 50%),
+    rgba(56, 189, 248, 0.1) 0%,
+    rgba(168, 85, 247, 0.06) 32%,
+    rgba(2, 3, 6, 0) 68%
+  );
+  transition: opacity 500ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cyber-pointer-glow {
+    opacity: 1;
+  }
+}
+
 .cyber-center-mask {
   position: absolute;
   inset: 0;
@@ -150,124 +245,6 @@ button {
   );
 }
 
-.cyber-sweep {
-  display: none;
-}
-
-.cyber-sweep-1 {
-  top: 17%;
-  animation-duration: 33s;
-  animation-delay: -6.5s;
-}
-
-.cyber-sweep-2 {
-  top: 52%;
-  animation-duration: 41s;
-  animation-delay: -21.3s;
-}
-
-.cyber-sweep-3 {
-  top: 78%;
-  animation-duration: 36s;
-  animation-delay: -12.8s;
-}
-
-.cyber-line {
-  display: none;
-}
-
-.cyber-line-h {
-  height: 1px;
-  width: min(34vw, 540px);
-}
-
-.cyber-line-v {
-  width: 1px;
-  height: min(32vh, 360px);
-  background: linear-gradient(
-    180deg,
-    rgba(34, 211, 238, 0),
-    rgba(59, 130, 246, 0.68),
-    rgba(34, 211, 238, 0)
-  );
-}
-
-.cyber-line-1 {
-  top: 24%;
-  left: 7%;
-  animation-delay: -8s;
-}
-
-.cyber-line-2 {
-  top: 69%;
-  left: 48%;
-  animation-delay: -19s;
-}
-
-.cyber-line-3 {
-  top: 12%;
-  left: 27%;
-  animation-delay: -11s;
-}
-
-.cyber-line-4 {
-  top: 42%;
-  left: 82%;
-  animation-delay: -23s;
-}
-
-.cyber-node {
-  display: none;
-}
-
-.cyber-node-2,
-.cyber-node-4,
-.cyber-node-6 {
-  background: rgba(125, 211, 252, 0.9);
-  box-shadow: 0 0 8px rgba(56, 189, 248, 0.34);
-}
-
-.cyber-node-1 {
-  top: 18%;
-  left: 16%;
-  animation-duration: 9.8s;
-  animation-delay: -3.4s;
-}
-
-.cyber-node-2 {
-  top: 33%;
-  left: 72%;
-  animation-duration: 12.7s;
-  animation-delay: -7.1s;
-}
-
-.cyber-node-3 {
-  top: 58%;
-  left: 22%;
-  animation-duration: 10.9s;
-  animation-delay: -5.8s;
-}
-
-.cyber-node-4 {
-  top: 73%;
-  left: 61%;
-  animation-duration: 13.6s;
-  animation-delay: -2.2s;
-}
-
-.cyber-node-5 {
-  top: 46%;
-  left: 87%;
-  animation-duration: 11.3s;
-  animation-delay: -9.2s;
-}
-
-.cyber-node-6 {
-  top: 27%;
-  left: 43%;
-  animation-duration: 14.4s;
-  animation-delay: -4.7s;
-}
 
 .premium-dashboard-shell {
   isolation: isolate;
@@ -486,14 +463,6 @@ button {
   filter: blur(12px);
 }
 
-.home-landing-grid {
-  display: none;
-}
-
-.home-landing-particles {
-  display: none;
-}
-
 .home-hero-glow {
   position: absolute;
   inset: -25% -10% auto -10%;
@@ -522,6 +491,32 @@ button {
 .home-hero-title {
   letter-spacing: -0.02em;
   text-wrap: balance;
+}
+
+.home-hero-reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  animation: home-hero-reveal-in 800ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes home-hero-reveal-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity 700ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scroll-reveal-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .home-cta-primary {
@@ -584,59 +579,6 @@ button {
   transform: translateY(-3px);
   border-color: rgba(103, 232, 249, 0.4);
   box-shadow: 0 0 20px rgba(6, 182, 212, 0.1);
-}
-
-.home-roll-shell {
-  position: relative;
-  height: 240px;
-  border-radius: 1rem;
-  overflow: hidden;
-  border: 1px solid rgba(125, 211, 252, 0.25);
-  background:
-    linear-gradient(155deg, rgba(20, 6, 32, 0.62), rgba(7, 22, 39, 0.54)),
-    rgba(2, 6, 12, 0.56);
-  box-shadow:
-    inset 0 0 0 1px rgba(125, 211, 252, 0.06),
-    0 0 24px rgba(125, 211, 252, 0.12);
-}
-
-.home-roll-grid {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-columns: repeat(16, minmax(0, 1fr));
-}
-
-.home-roll-grid span {
-  border-right: 1px solid rgba(125, 211, 252, 0.08);
-}
-
-.home-roll-grid span:nth-child(4n) {
-  border-right-color: rgba(125, 211, 252, 0.16);
-}
-
-.home-roll-note {
-  position: absolute;
-  height: 12px;
-  border-radius: 0.35rem;
-  border: 1px solid rgba(125, 211, 252, 0.35);
-  background: linear-gradient(
-    90deg,
-    rgba(34, 211, 238, 0.68),
-    rgba(192, 132, 252, 0.72)
-  );
-  box-shadow: 0 0 16px rgba(34, 211, 238, 0.18);
-  animation: home-roll-note-breathe 1.9s ease-in-out infinite;
-}
-
-.home-roll-playhead {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: rgba(224, 242, 254, 0.88);
-  box-shadow: 0 0 16px rgba(125, 211, 252, 0.68);
-  animation: home-roll-playhead-scan 3.2s linear infinite;
 }
 
 .similar-preview-card {
@@ -1317,34 +1259,6 @@ button {
   }
 }
 
-@keyframes home-roll-note-breathe {
-  0%,
-  100% {
-    transform: scaleY(1);
-    opacity: 0.82;
-  }
-  50% {
-    transform: scaleY(1.18);
-    opacity: 1;
-  }
-}
-
-@keyframes home-roll-playhead-scan {
-  0% {
-    left: -2%;
-    opacity: 0;
-  }
-  8% {
-    opacity: 1;
-  }
-  92% {
-    opacity: 1;
-  }
-  100% {
-    left: 102%;
-    opacity: 0;
-  }
-}
 
 .tool-sidebar {
   position: sticky;
@@ -1478,9 +1392,6 @@ button {
   }
 
   .cyber-gradient-layer,
-  .cyber-sweep,
-  .cyber-line,
-  .cyber-node,
   .premium-hero-glow,
   .extraction-process-wave span,
   .stem-mini-wave span,
@@ -1498,17 +1409,25 @@ button {
   .similar-loading-title,
   .starter-generate-btn,
   .home-landing-aurora,
-  .home-landing-grid,
-  .home-landing-particles span,
-  .home-roll-note,
-  .home-roll-playhead,
   .page-enter,
   .tool-route-loading-dot,
-  .ui-ripple {
+  .ui-ripple,
+  .home-hero-reveal,
+  .scroll-reveal {
     animation: none !important;
   }
 
   .premium-hero::before {
     animation: none !important;
+  }
+
+  .scroll-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .cyber-pointer-glow {
+    opacity: 0 !important;
   }
 }

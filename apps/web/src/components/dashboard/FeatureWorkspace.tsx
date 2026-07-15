@@ -149,6 +149,11 @@ const STARTER_LOADING_STEPS = [
   "Rendering starter variations",
 ] as const;
 const EMPTY_GENERATING_TARGETS: string[] = [];
+const STARTER_VARIANT_RANK: Record<string, number> = {
+  safe: 0,
+  fresh: 1,
+  experimental: 2,
+};
 
 const CREATE_SUBSECTIONS: Array<{ tab: CreateSubTab; label: string }> = [
   { tab: "extraction", label: "Stem and MIDI Extraction" },
@@ -1797,13 +1802,31 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
     [token],
   );
 
-  const visibleProjects = useMemo(
-    () =>
-      tab === "discover"
-        ? []
-        : projects.filter((project) => project.feature === tab),
-    [projects, tab],
-  );
+  const visibleProjects = useMemo(() => {
+    if (tab === "discover") {
+      return [];
+    }
+    const filtered = projects.filter((project) => project.feature === tab);
+    if (tab !== "starter") {
+      return filtered;
+    }
+
+    // Each "Generate" click creates safe/fresh/experimental back-to-back
+    // within the same request, so their timestamps land within a fraction
+    // of a second of each other. Bucket by a coarse time window to keep
+    // separate generations sorted newest-first, but order variants within
+    // a generation safe -> fresh -> experimental instead of by recency.
+    return [...filtered].sort((a, b) => {
+      const bucketA = Math.floor(new Date(a.created_at).getTime() / 10000);
+      const bucketB = Math.floor(new Date(b.created_at).getTime() / 10000);
+      if (bucketA !== bucketB) {
+        return bucketB - bucketA;
+      }
+      const rankA = STARTER_VARIANT_RANK[a.options?.starter_variant ?? ""] ?? 99;
+      const rankB = STARTER_VARIANT_RANK[b.options?.starter_variant ?? ""] ?? 99;
+      return rankA - rankB;
+    });
+  }, [projects, tab]);
 
   const handleGenerateStemMidi = useCallback(
     async (

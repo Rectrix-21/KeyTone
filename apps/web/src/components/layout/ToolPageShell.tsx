@@ -80,8 +80,8 @@ export function ToolPageShell({ active, children }: ToolPageShellProps) {
   return (
     <div className="tool-scale w-full px-3 py-6 sm:px-5 sm:py-8 xl:px-8">
       <div className="grid gap-6 md:grid-cols-[250px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] xl:gap-8">
-        <div className="hidden flex-col gap-4 md:flex">
-          <aside className="tool-sidebar glass rounded-xl p-3">
+        <div className="tool-sidebar hidden flex-col gap-4 md:flex">
+          <aside className="glass rounded-xl p-3">
             <p className="px-2 pb-1 text-[11px] uppercase tracking-[0.14em] text-cyan-200/70">
               Workspace
             </p>
@@ -168,7 +168,7 @@ export function ToolPageShell({ active, children }: ToolPageShellProps) {
             </div>
           </aside>
 
-          <aside className="tool-sidebar glass rounded-xl p-3">
+          <aside className="glass rounded-xl p-3">
             <p className="px-2 pb-1 text-[11px] uppercase tracking-[0.14em] text-cyan-200/75">
               Support
             </p>
