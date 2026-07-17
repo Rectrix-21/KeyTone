@@ -5,8 +5,10 @@ import Link from "next/link";
 import { AuthNav } from "@/components/layout/AuthNav";
 import { CyberBackground } from "@/components/layout/CyberBackground";
 import { WorkspaceWarmup } from "@/components/layout/WorkspaceWarmup";
+import { SITE_URL } from "@/lib/siteConfig";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "KeyTone",
   description: "Audio to MIDI with BPM, key detection, and smart variations",
   icons: {
