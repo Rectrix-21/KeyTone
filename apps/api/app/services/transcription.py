@@ -70,7 +70,7 @@ def _predict_midi(
     return fallback[0]
 
 
-def transcribe_to_midi(audio_path: Path, output_dir: Path) -> Path:
+def transcribe_to_midi(audio_path: Path, output_dir: Path, try_harmonic_variant: bool = True) -> Path:
     root_logger = logging.getLogger()
     previous_level = root_logger.level
     root_logger.setLevel(max(previous_level, logging.ERROR))
@@ -85,11 +85,17 @@ def transcribe_to_midi(audio_path: Path, output_dir: Path) -> Path:
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Callers that already ran their own harmonic separation on audio_path
+    # (see preprocess_harmonic_audio in jobs.py) pass try_harmonic_variant=False
+    # -- deriving *another* harmonic variant here and running a second Basic
+    # Pitch inference pass on it would just double the transcription cost for
+    # a variant that's barely different from the one already being scored.
     harmonic_audio_path: Path | None = None
-    try:
-        harmonic_audio_path = _prepare_harmonic_audio(audio_path)
-    except Exception:
-        harmonic_audio_path = None
+    if try_harmonic_variant:
+        try:
+            harmonic_audio_path = _prepare_harmonic_audio(audio_path)
+        except Exception:
+            harmonic_audio_path = None
 
     try:
         original_output_dir = output_dir / "original"

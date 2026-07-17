@@ -16,8 +16,7 @@ router = APIRouter(prefix="/v1/stripe", tags=["stripe"])
 @router.post("/create-checkout-session", response_model=CheckoutResponse)
 async def create_checkout(user: AuthUser = CurrentUser) -> CheckoutResponse:
     repository = Repository()
-    repository.ensure_profile(user.id, user.email)
-    profile = repository.get_profile(user.id)
+    profile = repository.ensure_profile(user.id, user.email)
     if profile.get("subscription_status") == "active":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

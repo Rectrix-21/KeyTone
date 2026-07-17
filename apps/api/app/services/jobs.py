@@ -677,16 +677,23 @@ async def process_project(
                 # desktop app covers stems) -- transcribe melody directly from
                 # the full mix, since that's the most accurate single target
                 # for polyphonic source audio.
-                repository.set_project_progress(project_id, 48, "Transcribing melody")
-                melody_source = await asyncio.to_thread(
+                repository.set_project_progress(project_id, 46, "Preprocessing audio")
+                # Melody and chord targets both transcribe from the same
+                # harmonic-separated version of the source mix -- compute it
+                # once and reuse it instead of re-running HPSS twice on
+                # identical input.
+                harmonic_source = await asyncio.to_thread(
                     preprocess_harmonic_audio,
                     input_audio,
-                    midi_dir / "extraction" / "melody" / f"{Path(file_name).stem}_melody_harmonic.wav",
+                    midi_dir / "extraction" / f"{Path(file_name).stem}_harmonic.wav",
                 )
+
+                repository.set_project_progress(project_id, 50, "Transcribing melody")
                 melody_midi = await asyncio.to_thread(
                     transcribe_to_midi,
-                    melody_source,
+                    harmonic_source,
                     midi_dir / "extraction" / "melody" / "raw",
+                    try_harmonic_variant=False,
                 )
                 transcribed_targets["melody"] = melody_midi
                 midi_confidence["melody"] = await asyncio.to_thread(
@@ -694,16 +701,12 @@ async def process_project(
                     melody_midi,
                 )
 
-                repository.set_project_progress(project_id, 58, "Transcribing chords")
-                chord_source = await asyncio.to_thread(
-                    preprocess_harmonic_audio,
-                    input_audio,
-                    midi_dir / "extraction" / "chord" / f"{Path(file_name).stem}_chord_harmonic.wav",
-                )
+                repository.set_project_progress(project_id, 62, "Transcribing chords")
                 chord_raw = await asyncio.to_thread(
                     transcribe_to_midi,
-                    chord_source,
+                    harmonic_source,
                     midi_dir / "extraction" / "chord" / "raw",
+                    try_harmonic_variant=False,
                 )
                 chord_clean = await asyncio.to_thread(
                     cleanup_chord_midi,
@@ -730,13 +733,20 @@ async def process_project(
                     if variation_target != "full"
                     else input_audio
                 )
+                already_harmonic = False
                 if variation_target == "chord" and separated_stems:
                     transcription_source = await asyncio.to_thread(
                         preprocess_harmonic_audio,
                         transcription_source,
                         midi_dir / "variation" / f"{Path(file_name).stem}_chord_harmonic.wav",
                     )
-                base_midi = await asyncio.to_thread(transcribe_to_midi, transcription_source, midi_dir)
+                    already_harmonic = True
+                base_midi = await asyncio.to_thread(
+                    transcribe_to_midi,
+                    transcription_source,
+                    midi_dir,
+                    try_harmonic_variant=not already_harmonic,
+                )
                 if variation_target == "chord":
                     base_midi = await asyncio.to_thread(
                         cleanup_chord_midi,
@@ -911,7 +921,8 @@ async def generate_midi_from_stem(
             temp_path / f"{target}_source.mp3",
         )
 
-        if target in {"chord", "melody", "piano", "guitar"}:
+        already_harmonic = target in {"chord", "melody", "piano", "guitar"}
+        if already_harmonic:
             source_audio = await asyncio.to_thread(
                 preprocess_harmonic_audio,
                 source_audio,
@@ -922,6 +933,7 @@ async def generate_midi_from_stem(
             transcribe_to_midi,
             source_audio,
             temp_path / "midi" / target / "raw",
+            try_harmonic_variant=not already_harmonic,
         )
 
         if target == "chord":

@@ -10,8 +10,7 @@ router = APIRouter(prefix="/v1/users", tags=["users"])
 @router.get("/me", response_model=UserSummaryResponse)
 async def get_me(user: AuthUser = CurrentUser) -> UserSummaryResponse:
     repository = Repository()
-    repository.ensure_profile(user.id, user.email)
-    profile = repository.get_profile(user.id)
+    profile = repository.ensure_profile(user.id, user.email)
     return UserSummaryResponse(
         id=profile["id"],
         email=profile["email"],
