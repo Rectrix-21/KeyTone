@@ -193,8 +193,8 @@ export default function DashboardHubPage() {
             Central Command
           </h1>
           <p className="mt-2 max-w-3xl text-base text-foreground/70">
-            Pick a focused workspace per feature. Each tool now has its own page
-            while this dashboard stays lightweight.
+            Jump straight into any tool below. Each one opens in its own
+            focused workspace built just for that task.
           </p>
 
           <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-black/35 px-3 py-1.5 text-sm text-cyan-100/90">

@@ -1,42 +1,43 @@
 import Link from "next/link";
+import { Activity, Layers, Radar, Sparkles, Timer, Wand2 } from "lucide-react";
 import { ScrollReveal } from "@/components/layout/ScrollReveal";
 
 const LANDING_FEATURES = [
   {
     title: "MIDI Generator",
     description: "Generate structured MIDI ideas in seconds.",
-    label: "MG",
+    icon: Sparkles,
     href: "/generator",
   },
   {
     title: "Chord Improver",
     description: "Upgrade progressions with smarter voicing.",
-    label: "CI",
+    icon: Wand2,
     href: "/chords",
   },
   {
     title: "Stem and MIDI Extraction",
     description:
       "Extract MIDI in the browser and extract stems in the desktop app.",
-    label: "SE",
+    icon: Layers,
     href: "/extract",
   },
   {
     title: "Track Analyzer",
     description: "Detect BPM, key, sections, and harmonic flow.",
-    label: "TA",
+    icon: Activity,
     href: "/analyzer",
   },
   {
     title: "Similar Songs",
     description: "Find references with matching vibe and texture.",
-    label: "SS",
+    icon: Radar,
     href: "/similar",
   },
   {
     title: "BPM Tools",
     description: "Tap tempo and lock groove with confidence.",
-    label: "BT",
+    icon: Timer,
     href: "/bpm",
   },
 ] as const;
@@ -111,7 +112,9 @@ export default function HomePage() {
           {LANDING_FEATURES.map((feature, index) => (
             <ScrollReveal key={feature.title} delayMs={(index % 3) * 70}>
               <article className="home-feature-card glass rounded-2xl p-5">
-                <span className="home-feature-icon">{feature.label}</span>
+                <span className="home-feature-icon">
+                  <feature.icon className="h-5 w-5" strokeWidth={2} />
+                </span>
                 <h3 className="mt-4 text-xl font-semibold text-cyan-100">
                   {feature.title}
                 </h3>

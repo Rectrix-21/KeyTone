@@ -27,18 +27,15 @@ export default function RootLayout({
         <div className="relative z-10">
           <header className="relative z-40 border-b border-cyan-500/20 bg-black/45 backdrop-blur-sm">
             <div className="mx-auto flex h-14 max-w-[2100px] items-center justify-between px-4 sm:h-16 sm:px-6 xl:px-10">
-              <Link href="/" className="flex items-center gap-2.5">
+              <Link href="/" className="flex items-center">
                 <Image
-                  src="/logo.png"
+                  src="/textlogo.png"
                   alt="KeyTone"
-                  width={40}
-                  height={40}
+                  width={1000}
+                  height={330}
                   priority
-                  className="h-10 w-10 rounded-md object-contain"
+                  className="h-11 w-auto object-contain sm:h-14"
                 />
-                <span className="cyber-heading text-xl font-semibold tracking-tight text-cyan-100">
-                  KeyTone
-                </span>
               </Link>
               <AuthNav />
             </div>
