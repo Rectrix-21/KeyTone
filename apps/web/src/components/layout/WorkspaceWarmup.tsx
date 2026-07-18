@@ -130,9 +130,38 @@ export function WorkspaceWarmup() {
   const router = useRouter();
 
   useEffect(() => {
-    for (const route of WORKSPACE_ROUTES) {
-      router.prefetch(route);
+    if (typeof window === "undefined") {
+      return;
     }
+
+    if (getSupabaseEnvError()) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const prefetchIfAuthenticated = async () => {
+      // Prefetching these protected routes unconditionally would have
+      // Next.js cache a middleware "redirect to /login" response for them
+      // while the visitor is still signed out. That stale cache entry can
+      // then get served after they log in, sending "Enter Studio" straight
+      // back to /login even though the session is valid.
+      const supabase = createClient();
+      const { data } = await supabase.auth.getSession();
+      if (cancelled || !data.session) {
+        return;
+      }
+
+      for (const route of WORKSPACE_ROUTES) {
+        router.prefetch(route);
+      }
+    };
+
+    void prefetchIfAuthenticated();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   useEffect(() => {

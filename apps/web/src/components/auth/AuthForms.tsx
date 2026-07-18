@@ -67,6 +67,7 @@ export function LoginForm() {
     }
 
     router.push("/dashboard");
+    router.refresh();
   };
 
   return (
@@ -197,6 +198,7 @@ export function SignupForm() {
     }
 
     router.push("/dashboard");
+    router.refresh();
   };
 
   return (
