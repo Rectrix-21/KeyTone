@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { AuthNav } from "@/components/layout/AuthNav";
 import { CyberBackground } from "@/components/layout/CyberBackground";
+import { Footer } from "@/components/layout/Footer";
 import { WorkspaceWarmup } from "@/components/layout/WorkspaceWarmup";
 import { SITE_URL } from "@/lib/siteConfig";
 
@@ -54,7 +55,7 @@ export default function RootLayout({
       <body className="relative min-h-screen overflow-x-hidden bg-black">
         <CyberBackground />
         <WorkspaceWarmup />
-        <div className="relative z-10">
+        <div className="relative z-10 flex min-h-screen flex-col">
           <header className="relative z-40 border-b border-cyan-500/20 bg-black/45 backdrop-blur-sm">
             <div className="mx-auto flex h-14 max-w-[2100px] items-center justify-between px-4 sm:h-16 sm:px-6 xl:px-10">
               <Link href="/" className="flex items-center">
@@ -70,7 +71,8 @@ export default function RootLayout({
               <AuthNav />
             </div>
           </header>
-          {children}
+          <div className="flex-1">{children}</div>
+          <Footer />
         </div>
       </body>
     </html>
