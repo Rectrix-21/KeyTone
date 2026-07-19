@@ -68,6 +68,33 @@ export function computePeaks(
   return peaks;
 }
 
+const WAVEFORM_BAR_WIDTH = 2;
+const WAVEFORM_GAP_WIDTH = 1;
+const WAVEFORM_BAR_COLOR = "rgba(34, 211, 238, 0.85)";
+
+export function renderWaveformBars(
+  canvas: HTMLCanvasElement,
+  buffer: AudioBuffer,
+): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return;
+  }
+
+  const cycle = WAVEFORM_BAR_WIDTH + WAVEFORM_GAP_WIDTH;
+  const barCount = Math.max(1, Math.floor(canvas.width / cycle));
+  const peaks = computePeaks(buffer, barCount);
+  const mid = canvas.height / 2;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = WAVEFORM_BAR_COLOR;
+
+  for (let i = 0; i < barCount; i++) {
+    const barHeight = Math.max(1, peaks[i] * mid);
+    ctx.fillRect(i * cycle, mid - barHeight, WAVEFORM_BAR_WIDTH, barHeight * 2);
+  }
+}
+
 export function trimAudioBuffer(
   buffer: AudioBuffer,
   startSec: number,

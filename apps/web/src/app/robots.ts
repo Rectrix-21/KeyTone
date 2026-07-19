@@ -9,12 +9,6 @@ export default function robots(): MetadataRoute.Robots {
         allow: "/",
         disallow: [
           "/dashboard",
-          "/analyzer",
-          "/bpm",
-          "/similar",
-          "/extract",
-          "/generator",
-          "/chords",
           "/login",
           "/signup",
           "/forgot-password",

@@ -395,6 +395,22 @@ def _lane_for_pitch(pitch: int) -> str:
     return "chord"
 
 
+def _lane_for_note(pitch: int, target_lane: str | None) -> str:
+    """Classify a note's processing lane.
+
+    When target_lane == "chord", the whole source is already chord-only
+    content (see cleanup_chord_midi's dedicated chord-cleaning pass), so
+    every note belongs to the chord lane. Falling back to pitch-range
+    splitting in that case would silently exclude bass-doubled roots and
+    high extensions from chord-improvement processing (retuning, revoicing,
+    scoring) while leaving them untouched in the output alongside notes
+    that did get processed -- producing inconsistent, "choppy" results.
+    """
+    if target_lane == "chord":
+        return "chord"
+    return _lane_for_pitch(pitch)
+
+
 def _bar_index(note_time: float, beat_sec: float, bars: int) -> int:
     beat = note_time / max(1e-6, beat_sec)
     return int(_clamp(math.floor(beat / 4.0), 0, max(0, bars - 1)))
@@ -417,13 +433,16 @@ def _scale_step(note: int, step: int, root: int, mode: str) -> int:
     return current
 
 
-def _collect_lane_notes(midi: pretty_midi.PrettyMIDI) -> dict[str, list[pretty_midi.Note]]:
+def _collect_lane_notes(
+    midi: pretty_midi.PrettyMIDI,
+    target_lane: str | None = None,
+) -> dict[str, list[pretty_midi.Note]]:
     lanes = {"melody": [], "chord": [], "bass": []}
     for instrument in midi.instruments:
         if instrument.is_drum:
             continue
         for note in instrument.notes:
-            lane = _lane_for_pitch(int(note.pitch))
+            lane = _lane_for_note(int(note.pitch), target_lane)
             lanes[lane].append(note)
     for lane in lanes:
         lanes[lane].sort(key=lambda note: (note.start, note.pitch))
@@ -523,7 +542,7 @@ def _analyze_identity(
     duration = max(2.0, midi.get_end_time())
     bars = int(max(1, math.ceil((duration / beat_sec) / 4.0)))
 
-    lanes = _collect_lane_notes(midi)
+    lanes = _collect_lane_notes(midi, target)
     focus_lane = "melody" if target == "full" else target
     focus_notes = lanes.get(focus_lane, []) or lanes["melody"] or lanes["chord"] or lanes["bass"]
 
@@ -1121,6 +1140,7 @@ def _clone_with_time_scale(
     source: pretty_midi.PrettyMIDI,
     target_bpm: float,
     time_scale: float,
+    target_lane: str | None = None,
 ) -> tuple[pretty_midi.PrettyMIDI, dict[str, list[pretty_midi.Note]]]:
     cloned = pretty_midi.PrettyMIDI(initial_tempo=target_bpm)
     lanes = {"melody": [], "chord": [], "bass": []}
@@ -1139,7 +1159,7 @@ def _clone_with_time_scale(
             )
             new_inst.notes.append(new_note)
             if not instrument.is_drum:
-                lanes[_lane_for_pitch(new_note.pitch)].append(new_note)
+                lanes[_lane_for_note(new_note.pitch, target_lane)].append(new_note)
         cloned.instruments.append(new_inst)
     for lane in lanes:
         lanes[lane].sort(key=lambda note: (note.start, note.pitch))
@@ -1148,6 +1168,7 @@ def _clone_with_time_scale(
 
 def _collect_lane_note_refs(
     midi: pretty_midi.PrettyMIDI,
+    target_lane: str | None = None,
 ) -> dict[str, list[tuple[pretty_midi.Instrument, pretty_midi.Note]]]:
     refs: dict[str, list[tuple[pretty_midi.Instrument, pretty_midi.Note]]] = {
         "melody": [],
@@ -1158,7 +1179,7 @@ def _collect_lane_note_refs(
         if instrument.is_drum:
             continue
         for note in instrument.notes:
-            refs[_lane_for_pitch(int(note.pitch))].append((instrument, note))
+            refs[_lane_for_note(int(note.pitch), target_lane)].append((instrument, note))
     for lane in refs:
         refs[lane].sort(key=lambda pair: (pair[1].start, pair[1].pitch))
     return refs
@@ -1174,11 +1195,24 @@ def _add_creative_layers(
     mode: str,
     beat_sec: float,
     rng: random.Random,
+    target_lane: str | None = None,
 ) -> int:
     if profile == "safe":
         return 0
 
-    refs = _collect_lane_note_refs(midi)
+    if target_lane == "chord":
+        # These layers add short, isolated melody-echo and bass-pickup grace
+        # notes meant to embellish a full arrangement with real independent
+        # melody/bass lines. For a chord-only target there is no such line
+        # to embellish -- everything is chord content -- so they show up as
+        # disconnected, out-of-context blips scattered on top of the chords
+        # instead of coherent ornamentation. _apply_chord_improver's own
+        # voicing logic already adds harmonic richness (extensions, color
+        # tones) properly, by voicing them into each chord rather than
+        # sprinkling detached one-off notes on top of it.
+        return 0
+
+    refs = _collect_lane_note_refs(midi, target_lane)
     selected = set(selected_lanes)
     additions = 0
     max_additions = 12 if profile == "pro" else 24
@@ -1450,6 +1484,7 @@ def _score_candidate(
     key_root: int,
     mode: str,
     intent: VariationIntent,
+    target: LaneTarget = "full",
 ) -> CandidateScore:
     motif_retention = _motif_similarity(base["motif_signature"], candidate["motif_signature"])
     rhythmic_coherence = _clamp(1.0 - abs(base["syncopation"] - candidate["syncopation"]), 0.0, 1.0)
@@ -1458,7 +1493,7 @@ def _score_candidate(
     groove_quality = _clamp((rhythmic_coherence * 0.6) + (candidate["repetition_score"] * 0.4), 0.0, 1.0)
     top_line_memorability = _clamp((candidate["repetition_score"] * 0.65) + (motif_retention * 0.35), 0.0, 1.0)
     tension_resolution = _tension_resolution_score(base, candidate)
-    lane_realism = _lane_realism_score(_collect_lane_notes(candidate_midi))
+    lane_realism = _lane_realism_score(_collect_lane_notes(candidate_midi, target))
 
     voice_leading_smoothness = lane_realism
     top_note_motion = top_line_memorability
@@ -1467,8 +1502,8 @@ def _score_candidate(
     progression_identity = motif_retention
 
     if intent in CHORD_IMPROVER_MODES:
-        base_chords = _analyze_chord_groups(_collect_lane_notes(source_midi)["chord"], mode)
-        candidate_chords = _analyze_chord_groups(_collect_lane_notes(candidate_midi)["chord"], mode)
+        base_chords = _analyze_chord_groups(_collect_lane_notes(source_midi, target)["chord"], mode)
+        candidate_chords = _analyze_chord_groups(_collect_lane_notes(candidate_midi, target)["chord"], mode)
         (
             voice_leading_smoothness,
             top_note_motion,
@@ -1522,13 +1557,14 @@ def _retune_all_non_drum(
     mode: str,
     retune_lanes: set[str] | None = None,
     source_key_root: int | None = None,
+    target_lane: str | None = None,
 ) -> None:
     src_root = source_key_root if source_key_root is not None else key_root
     for instrument in midi.instruments:
         if instrument.is_drum:
             continue
         for note in instrument.notes:
-            lane = _lane_for_pitch(int(note.pitch))
+            lane = _lane_for_note(int(note.pitch), target_lane)
             should_retune = retune_lanes is None or lane in retune_lanes
             if should_retune:
                 note.pitch = _transpose_pitch(
@@ -1564,7 +1600,7 @@ def _build_candidate(
         0.82,
     )
 
-    midi, lanes = _clone_with_time_scale(source, target_bpm, time_scale)
+    midi, lanes = _clone_with_time_scale(source, target_bpm, time_scale, target)
     selected_lanes = ["melody", "chord", "bass"] if target == "full" else [target]
 
     move_labels: list[str] = []
@@ -1618,12 +1654,13 @@ def _build_candidate(
         mode=mode,
         beat_sec=beat_sec,
         rng=rng,
+        target_lane=target,
     )
     if creative_layers > 0:
         move_labels.append(f"Creative Layer x{creative_layers}")
 
     _retune_all_non_drum(
-        midi, key_root, mode, set(selected_lanes), source_key_root
+        midi, key_root, mode, set(selected_lanes), source_key_root, target
     )
     candidate_analysis = _analyze_identity(midi, key_root, mode, target)
     scores = _score_candidate(
@@ -1634,6 +1671,7 @@ def _build_candidate(
         key_root=key_root,
         mode=mode,
         intent=intent,
+        target=target,
     )
 
     move_text = " + ".join(move_labels[:2]) if move_labels else "Identity-preserving upgrade"
@@ -1687,7 +1725,9 @@ def alter_midi(
     rng = random.Random(chosen_seed)
 
     base_analysis = _analyze_identity(source, key_root, mode, target_lane)
-    base_chord_groups = _analyze_chord_groups(_collect_lane_notes(source)["chord"], mode)
+    base_chord_groups = _analyze_chord_groups(
+        _collect_lane_notes(source, target_lane)["chord"], mode
+    )
     candidates: list[CandidateRender] = []
     for profile in ("safe", "pro", "bold"):
         candidate_rng = random.Random(rng.randint(1, 2_147_483_647))

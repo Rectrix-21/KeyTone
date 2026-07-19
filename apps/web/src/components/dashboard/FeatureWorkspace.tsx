@@ -43,11 +43,28 @@ import {
   VariationStyle,
   VariationTarget,
 } from "@/types/api";
+import dynamic from "next/dynamic";
 import { UploadDropzone } from "@/components/dashboard/UploadDropzone";
 import { ProjectCard } from "@/components/dashboard/ProjectCard";
 import { AudioTrimPanel } from "@/components/dashboard/AudioTrimPanel";
 import { WindowsIcon, AppleIcon } from "@/components/dashboard/OsIcons";
 import { probeAudioDuration } from "@/lib/audio/trimAudio";
+
+// SoundTouchNode (used by the audio engine this panel depends on) extends the
+// browser-only AudioWorkletNode class at module scope, which crashes if
+// evaluated during SSR. Loading this panel client-only avoids that.
+const KeyBpmChangerPanel = dynamic(
+  () =>
+    import("@/components/dashboard/KeyBpmChangerPanel").then(
+      (mod) => mod.KeyBpmChangerPanel,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <p className="text-xs text-foreground/70">Loading key & BPM changer...</p>
+    ),
+  },
+);
 
 const POLL_MS = 2500;
 const MAX_HISTORY_ITEMS = 10;
@@ -69,13 +86,19 @@ const LOCAL_COMPANION_DOWNLOADS = {
     process.env.NEXT_PUBLIC_KEYTONE_STUDIO_MAC_URL ??
     "https://github.com/Rectrix-21/KeyTone/releases/download/studio-v1/KeyTone-Studio.dmg",
 };
-type DashboardTab = "extraction" | "variation" | "starter" | "discover";
+type DashboardTab =
+  | "extraction"
+  | "variation"
+  | "starter"
+  | "keychanger"
+  | "discover";
 type CreateSubTab = Exclude<DashboardTab, "discover">;
 type DiscoverSubTab = "analyzer" | "similar" | "bpm";
 export type FeatureRoute =
   | "analyzer"
   | "similar"
   | "bpm"
+  | "keychanger"
   | "extract"
   | "chords"
   | "generator";
@@ -159,6 +182,7 @@ const CREATE_SUBSECTIONS: Array<{ tab: CreateSubTab; label: string }> = [
   { tab: "extraction", label: "Stem and MIDI Extraction" },
   { tab: "variation", label: "Chord Improver" },
   { tab: "starter", label: "Track Starter Generator" },
+  { tab: "keychanger", label: "Key & BPM Changer" },
 ];
 
 const DISCOVER_SUBSECTIONS: Array<{ tab: DiscoverSubTab; label: string }> = [
@@ -171,6 +195,7 @@ const CREATE_TOOL_ICONS: Record<CreateSubTab, string> = {
   extraction: "◉",
   variation: "◈",
   starter: "◆",
+  keychanger: "◐",
 };
 
 const DISCOVER_TOOL_ICONS: Record<DiscoverSubTab, string> = {
@@ -183,6 +208,7 @@ const FEATURE_ROUTE_LABELS: Record<FeatureRoute, string> = {
   analyzer: "Track Analyzer",
   similar: "Similar Songs",
   bpm: "BPM Finder and Tapper",
+  keychanger: "Key & BPM Changer",
   extract: "Stem and MIDI Extraction",
   chords: "Chord Improver",
   generator: "Track Generator",
@@ -200,6 +226,9 @@ function featureRouteToTabState(featureRoute?: FeatureRoute): {
   }
   if (featureRoute === "bpm") {
     return { tab: "discover", discoverSubTab: "bpm" };
+  }
+  if (featureRoute === "keychanger") {
+    return { tab: "keychanger", discoverSubTab: "analyzer" };
   }
   if (featureRoute === "extract") {
     return { tab: "extraction", discoverSubTab: "analyzer" };
@@ -556,7 +585,11 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
   const metronomeBeatIndexRef = useRef(0);
   const tapTempoTimestampsRef = useRef<number[]>([]);
   const bpmAnimationFrameRef = useRef<number | null>(null);
-  const variationTarget: VariationTarget = "full";
+  // Chord Improver only cares about chords, so audio uploads only get the
+  // chord lane transcribed (faster, and skips melody/bass work nobody
+  // asked for). MIDI uploads are unaffected: a MIDI file already carries
+  // every lane regardless of this value.
+  const variationTarget: VariationTarget = "chord";
   const activeMainSection: "create" | "discover" =
     tab === "discover" ? "discover" : "create";
   const activeCreateSubTab: CreateSubTab =
@@ -1543,6 +1576,9 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
           setError("Use Track Starter Generator controls for this tab.");
           return;
         }
+        if (tab === "keychanger") {
+          return;
+        }
 
         const accepted = await uploadProject(file, token, {
           feature: tab,
@@ -2306,6 +2342,17 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
               </div>
             </div>
 
+            <p className="mt-3 rounded-lg border border-fuchsia-500/25 bg-fuchsia-500/5 px-3 py-2 text-xs leading-relaxed text-fuchsia-100/85">
+              <span className="font-medium text-fuchsia-100">
+                For the highest quality MIDI:
+              </span>{" "}
+              use Stem Extraction below to isolate the instrument you want
+              first, then drop that isolated stem here. Extracting straight
+              from a full mix works, but transcription is always more
+              accurate on a single isolated instrument than on a mix with
+              vocals, drums, and other instruments layered together.
+            </p>
+
             {extractionTrimFile ? (
               <AudioTrimPanel
                 file={extractionTrimFile}
@@ -2362,23 +2409,40 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
 
             <p className="mt-3 text-[11px] leading-relaxed text-foreground/60">
               Windows may show a SmartScreen warning (&ldquo;Windows protected
-              your PC&rdquo;) since the installer isn&apos;t code-signed yet —
-              click{" "}
+              your PC&rdquo;) since the installer isn&apos;t code-signed yet.
+              Click{" "}
               <span className="text-foreground/80">More info</span>, then{" "}
               <span className="text-foreground/80">Run anyway</span>. This is
               expected and safe.
             </p>
           </section>
         </>
+      ) : tab === "keychanger" ? (
+        <section className="mb-4 rounded-xl border border-cyan-500/20 bg-black/35 p-4 sm:p-5">
+          <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-200/85">
+            Key & BPM Changer
+          </p>
+          <h2 className="mt-1 text-sm font-medium text-cyan-100 sm:text-base">
+            Drag the tempo fader and key stepper live while a track plays,
+            just like a CDJ.
+          </h2>
+          <p className="mt-1 text-xs text-foreground/70">
+            Preview is free for everyone. Exporting the processed WAV
+            requires Pro.
+          </p>
+          <div className="mt-4">
+            <KeyBpmChangerPanel isProUser={isProUser} />
+          </div>
+        </section>
       ) : tab === "variation" ? (
         <section className="mb-4 rounded-xl border border-cyan-500/20 bg-black/35 p-4">
           <h2 className="text-sm font-medium text-cyan-100">
             Chord Improver flow
           </h2>
           <p className="mt-1 text-xs text-foreground/70">
-            Upload MIDI first. Then choose target lane, mood mode, key, and
-            intensity to generate Safe, Pro, and Bold chord upgrades with
-            improved voicing and voice leading.
+            Upload a MIDI file first. Then choose target lane, mood mode,
+            key, and intensity to generate Safe, Pro, and Bold chord
+            upgrades with improved voicing and voice leading.
           </p>
         </section>
       ) : tab === "discover" ? (
@@ -2602,6 +2666,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
 
       {tab !== "starter" &&
       tab !== "extraction" &&
+      tab !== "keychanger" &&
       (tab !== "discover" || discoverSubTab === "analyzer") ? (
         tab === "discover" && discoverSubTab === "analyzer" ? (
           <article className="scanner-shell mt-2 p-4 sm:p-5">
@@ -2643,7 +2708,7 @@ export function FeatureWorkspace({ featureRoute }: FeatureWorkspaceProps) {
           <>
             <UploadDropzone
               onFileAccepted={handleUpload}
-              mode={tab === "variation" ? "audioOrMidi" : "audio"}
+              mode={tab === "variation" ? "midi" : "audio"}
               disabled={
                 uploading ||
                 (tab !== "discover" &&

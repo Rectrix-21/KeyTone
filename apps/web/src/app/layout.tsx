@@ -7,12 +7,40 @@ import { CyberBackground } from "@/components/layout/CyberBackground";
 import { WorkspaceWarmup } from "@/components/layout/WorkspaceWarmup";
 import { SITE_URL } from "@/lib/siteConfig";
 
+const DEFAULT_TITLE = "KeyTone: Audio to MIDI Converter and AI Music Tools";
+const DEFAULT_DESCRIPTION =
+  "Turn any song into MIDI in your browser. KeyTone transcribes melody and chords, generates chord progressions, and detects BPM and key. Free to try, no install required.";
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "KeyTone",
-  description: "Audio to MIDI with BPM, key detection, and smart variations",
+  title: DEFAULT_TITLE,
+  description: DEFAULT_DESCRIPTION,
+  alternates: {
+    canonical: "/",
+  },
   icons: {
     icon: "/logo.png",
+  },
+  openGraph: {
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
+    url: SITE_URL,
+    siteName: "KeyTone",
+    images: [
+      {
+        url: "/textlogo.png",
+        width: 1000,
+        height: 330,
+        alt: "KeyTone",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
+    images: ["/textlogo.png"],
   },
 };
 
@@ -33,10 +61,10 @@ export default function RootLayout({
                 <Image
                   src="/textlogo.png"
                   alt="KeyTone"
-                  width={1000}
+                  width={1100}
                   height={330}
                   priority
-                  className="h-11 w-auto object-contain sm:h-14"
+                  className="h-11 w-auto object-contain sm:h-12"
                 />
               </Link>
               <AuthNav />

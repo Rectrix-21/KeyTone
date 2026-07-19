@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.services.audio_analysis import estimate_bpm_and_key, suggest_chords
 from app.services.chord_cleanup import (
     cleanup_chord_midi,
+    cleanup_melody_midi,
     preprocess_harmonic_audio,
 )
 from app.services.instrument_detection import (
@@ -444,11 +445,20 @@ def _detect_chord_from_energy(
             optional_coverage = optional_hits / (total_energy + 1e-9)
             spill = non_template_hits / (total_energy + 1e-9)
 
+            # template_weight used to add a flat, unconditional bonus here
+            # regardless of actual fit -- and it happened to rank m7b5 and
+            # dim7 as the two highest-weighted qualities of the whole table,
+            # so on any remotely ambiguous chord (m7b5's pitch classes
+            # differ from plain m7 by a single semitone) the score was
+            # systematically tilted toward the more dissonant, rarer label
+            # even when the plain reading fit the actual notes just as well
+            # or better. optional_coverage already rewards genuinely
+            # matching extended/optional tones, so this term was both
+            # redundant and biased.
             score = (
                 (coverage * 1.3)
                 + (optional_coverage * 0.35)
                 - (spill * 1.05)
-                + (template_weight * 0.22)
             )
 
             root_energy = float(energy[root]) / (total_energy + 1e-9)
@@ -640,8 +650,16 @@ async def process_project(
             transcribed_targets: dict[str, Path] = {}
             midi_confidence: dict[str, float] = {}
             target_quality: dict[str, dict[str, float | bool]] = {}
+            # Chord target skips Demucs stem separation: harmonic (HPSS)
+            # preprocessing on the raw mix is the same proven approach the
+            # extraction feature's chord lane already uses, and it doesn't
+            # depend on Demucs correctly isolating a "chord instrument" stem
+            # -- which behaves poorly on inputs like solo piano that have no
+            # vocals/drums/bass content for Demucs's 4-stem model to key off.
             should_separate = (
-                not is_midi_input and feature == "variation" and variation_target != "full"
+                not is_midi_input
+                and feature == "variation"
+                and variation_target not in ("full", "chord")
             )
 
             if should_separate:
@@ -666,6 +684,8 @@ async def process_project(
                     instrument_detection = None
             elif not is_midi_input and feature == "variation" and variation_target == "full":
                 separation_skipped_reason = "variation_full_target"
+            elif not is_midi_input and feature == "variation" and variation_target == "chord":
+                separation_skipped_reason = "variation_chord_target"
 
             midi_dir = temp_path / "midi"
             if is_midi_input:
@@ -689,11 +709,21 @@ async def process_project(
                 )
 
                 repository.set_project_progress(project_id, 50, "Transcribing melody")
-                melody_midi = await asyncio.to_thread(
+                melody_raw = await asyncio.to_thread(
                     transcribe_to_midi,
                     harmonic_source,
                     midi_dir / "extraction" / "melody" / "raw",
                     try_harmonic_variant=False,
+                )
+                # Basic Pitch's raw output here is a polyphonic transcription
+                # of the whole harmonic mix, not an isolated melody line --
+                # reduce it to a single monophonic top voice, the same way
+                # cleanup_chord_midi reduces the chord target's raw output
+                # into actual chords instead of leaving it undifferentiated.
+                melody_midi = await asyncio.to_thread(
+                    cleanup_melody_midi,
+                    melody_raw,
+                    midi_dir / "extraction" / "melody" / "clean_melody.mid",
                 )
                 transcribed_targets["melody"] = melody_midi
                 midi_confidence["melody"] = await asyncio.to_thread(
@@ -734,7 +764,12 @@ async def process_project(
                     else input_audio
                 )
                 already_harmonic = False
-                if variation_target == "chord" and separated_stems:
+                if variation_target == "chord":
+                    # No stem separation happened for chord target (see
+                    # should_separate above), so transcription_source is
+                    # still the raw input mix here. Harmonic (HPSS)
+                    # preprocessing directly on that mix is what the
+                    # extraction feature's chord lane already does.
                     transcription_source = await asyncio.to_thread(
                         preprocess_harmonic_audio,
                         transcription_source,
@@ -794,7 +829,14 @@ async def process_project(
 
             if feature == "extraction" and stem_paths:
                 preview_notes = await asyncio.to_thread(_collect_preview_notes_from_target_midis, stem_paths, allowed_preview_lanes)
-            elif feature == "variation" and is_midi_input:
+            elif feature == "variation" and (is_midi_input or variation_target == "chord"):
+                # base_midi is already the definitive content here -- a
+                # pass-through MIDI upload, or (for chord target) the output
+                # of cleanup_chord_midi's dedicated chord-cleaning pass.
+                # Re-running the generic melody/chord/bass heuristic in
+                # _analyze_midi_lanes and filtering through it again would
+                # just drop notes using a second, less accurate
+                # lane-classification pass that disagrees with the first.
                 preview_notes = await asyncio.to_thread(
                     _collect_exact_midi_preview_notes,
                     base_midi,

@@ -6,7 +6,7 @@ import { useDropzone } from "react-dropzone";
 interface UploadDropzoneProps {
   onFileAccepted: (file: File) => void;
   disabled?: boolean;
-  mode?: "audio" | "audioOrMidi";
+  mode?: "audio" | "audioOrMidi" | "midi";
   className?: string;
   message?: string;
 }
@@ -28,6 +28,20 @@ export function UploadDropzone({
     [onFileAccepted],
   );
 
+  const MIDI_ACCEPT = {
+    "audio/midi": [".mid", ".midi"],
+    "audio/x-midi": [".mid", ".midi"],
+    "application/octet-stream": [".mid", ".midi"],
+  };
+
+  const AUDIO_ACCEPT = {
+    "audio/mpeg": [".mp3"],
+    "audio/wav": [".wav"],
+    "audio/x-wav": [".wav"],
+    "audio/mp4": [".m4a"],
+    "audio/x-m4a": [".m4a"],
+  };
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     disabled,
@@ -35,23 +49,10 @@ export function UploadDropzone({
     maxSize: 25 * 1024 * 1024,
     accept:
       mode === "audio"
-        ? {
-            "audio/mpeg": [".mp3"],
-            "audio/wav": [".wav"],
-            "audio/x-wav": [".wav"],
-            "audio/mp4": [".m4a"],
-            "audio/x-m4a": [".m4a"],
-          }
-        : {
-            "audio/mpeg": [".mp3"],
-            "audio/wav": [".wav"],
-            "audio/x-wav": [".wav"],
-            "audio/mp4": [".m4a"],
-            "audio/x-m4a": [".m4a"],
-            "audio/midi": [".mid", ".midi"],
-            "audio/x-midi": [".mid", ".midi"],
-            "application/octet-stream": [".mid", ".midi"],
-          },
+        ? AUDIO_ACCEPT
+        : mode === "midi"
+          ? MIDI_ACCEPT
+          : { ...AUDIO_ACCEPT, ...MIDI_ACCEPT },
   });
 
   return (
@@ -68,7 +69,9 @@ export function UploadDropzone({
         {message ??
           (mode === "audio"
             ? "Drop MP3/WAV/M4A up to 25MB, or click to upload."
-            : "Drop MIDI or MP3/WAV/M4A up to 25MB, or click to upload.")}
+            : mode === "midi"
+              ? "Drop a MIDI file up to 25MB, or click to upload."
+              : "Drop MIDI or MP3/WAV/M4A up to 25MB, or click to upload.")}
       </p>
     </div>
   );

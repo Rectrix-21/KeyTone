@@ -12,7 +12,7 @@ html {
 
 body {
   @apply bg-background text-foreground antialiased;
-  background: linear-gradient(170deg, #010102 0%, #020205 58%, #04050b 100%);
+  background: #000000;
 }
 
 a,
@@ -96,7 +96,7 @@ button {
   overflow: hidden;
   pointer-events: none;
   background:
-    linear-gradient(170deg, rgba(2, 3, 6, 0.98) 0%, rgba(1, 2, 4, 0.99) 100%),
+    linear-gradient(170deg, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.99) 100%),
     linear-gradient(
       120deg,
       rgba(168, 85, 247, 0.08) 0%,
@@ -114,8 +114,8 @@ button {
   inset: 0;
   background: linear-gradient(
     to bottom,
-    rgba(2, 6, 12, 0.24),
-    rgba(2, 6, 12, 0.52)
+    rgba(0, 0, 0, 0.24),
+    rgba(0, 0, 0, 0.52)
   );
 }
 
@@ -239,9 +239,9 @@ button {
   background: radial-gradient(
     70% 56% at 50% 52%,
     rgba(0, 0, 0, 0.9) 0%,
-    rgba(1, 2, 4, 0.84) 34%,
-    rgba(1, 2, 4, 0.48) 58%,
-    rgba(1, 2, 4, 0) 100%
+    rgba(0, 0, 0, 0.84) 34%,
+    rgba(0, 0, 0, 0.48) 58%,
+    rgba(0, 0, 0, 0) 100%
   );
 }
 

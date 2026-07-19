@@ -4,22 +4,24 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient, getSupabaseEnvError } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { sanitizeNextPath } from "@/lib/auth/nextPath";
 import {
   PASSWORD_REQUIREMENTS_HINT,
   getPasswordRequirementError,
 } from "@/lib/auth/password";
 
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string } = {}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const envError = getSupabaseEnvError();
+  const destination = sanitizeNextPath(next);
   const authRedirectTo =
     typeof window === "undefined"
       ? undefined
-      : `${window.location.origin}/auth/callback`;
+      : `${window.location.origin}/auth/callback?next=${encodeURIComponent(destination)}`;
 
   const onGoogleSignIn = async () => {
     setError(null);
@@ -66,7 +68,7 @@ export function LoginForm() {
       return;
     }
 
-    router.push("/dashboard");
+    router.push(destination);
     router.refresh();
   };
 
@@ -123,7 +125,12 @@ export function LoginForm() {
       </button>
       <p className="text-center text-sm text-cyan-100/70">
         Don&apos;t have an account?{" "}
-        <Link href="/signup" className="text-cyan-300 hover:text-cyan-200">
+        <Link
+          href={
+            next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"
+          }
+          className="text-cyan-300 hover:text-cyan-200"
+        >
           Sign up
         </Link>
       </p>
@@ -131,17 +138,18 @@ export function LoginForm() {
   );
 }
 
-export function SignupForm() {
+export function SignupForm({ next }: { next?: string } = {}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const envError = getSupabaseEnvError();
+  const destination = sanitizeNextPath(next);
   const authRedirectTo =
     typeof window === "undefined"
       ? undefined
-      : `${window.location.origin}/auth/callback`;
+      : `${window.location.origin}/auth/callback?next=${encodeURIComponent(destination)}`;
 
   const onGoogleSignIn = async () => {
     setError(null);
@@ -197,7 +205,7 @@ export function SignupForm() {
       return;
     }
 
-    router.push("/dashboard");
+    router.push(destination);
     router.refresh();
   };
 
@@ -248,7 +256,10 @@ export function SignupForm() {
       </button>
       <p className="text-center text-sm text-cyan-100/70">
         Already have an account?{" "}
-        <Link href="/login" className="text-cyan-300 hover:text-cyan-200">
+        <Link
+          href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}
+          className="text-cyan-300 hover:text-cyan-200"
+        >
           Login
         </Link>
       </p>

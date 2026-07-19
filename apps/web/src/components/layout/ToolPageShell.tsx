@@ -10,6 +10,7 @@ export type ToolShellRoute =
   | "analyzer"
   | "similar"
   | "bpm"
+  | "keychanger"
   | "extract"
   | "chords"
   | "generator";
@@ -27,15 +28,20 @@ const DASHBOARD_NAV_ITEM: ToolNavItem = {
 };
 
 const CREATE_NAV_ITEMS: ToolNavItem[] = [
-  { href: "/extract", label: "Stem and MIDI Extraction", route: "extract" },
-  { href: "/chords", label: "Chord Improver", route: "chords" },
-  { href: "/generator", label: "Track Generator", route: "generator" },
+  { href: "/dashboard/extract", label: "Stem and MIDI Extraction", route: "extract" },
+  { href: "/dashboard/chords", label: "Chord Improver", route: "chords" },
+  { href: "/dashboard/generator", label: "Track Generator", route: "generator" },
+  {
+    href: "/dashboard/keychanger",
+    label: "Key & BPM Changer",
+    route: "keychanger",
+  },
 ];
 
 const DISCOVER_NAV_ITEMS: ToolNavItem[] = [
-  { href: "/analyzer", label: "Track Analyzer", route: "analyzer" },
-  { href: "/similar", label: "Similar Songs", route: "similar" },
-  { href: "/bpm", label: "BPM Finder", route: "bpm" },
+  { href: "/dashboard/analyzer", label: "Track Analyzer", route: "analyzer" },
+  { href: "/dashboard/similar", label: "Similar Songs", route: "similar" },
+  { href: "/dashboard/bpm", label: "BPM Finder", route: "bpm" },
 ];
 
 const TOOL_NAV_ITEMS: ToolNavItem[] = [

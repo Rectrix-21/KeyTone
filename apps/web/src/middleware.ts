@@ -1,15 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-const PROTECTED_PATHS = [
-  "/dashboard",
-  "/analyzer",
-  "/bpm",
-  "/similar",
-  "/extract",
-  "/generator",
-  "/chords",
-];
+const PROTECTED_PATHS = ["/dashboard"];
 
 const AUTH_PATHS = ["/login", "/signup"];
 
@@ -57,26 +49,22 @@ export async function middleware(request: NextRequest) {
   const isAuthPath = AUTH_PATHS.some((path) => pathname === path);
 
   if (isProtected && !user) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   if (isAuthPath && user) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    const next = request.nextUrl.searchParams.get("next");
+    const isSafeNext = Boolean(next) && next!.startsWith("/") && !next!.startsWith("//");
+    return NextResponse.redirect(
+      new URL(isSafeNext ? next! : "/dashboard", request.url),
+    );
   }
 
   return response;
 }
 
 export const config = {
-  matcher: [
-    "/dashboard/:path*",
-    "/analyzer/:path*",
-    "/bpm/:path*",
-    "/similar/:path*",
-    "/extract/:path*",
-    "/generator/:path*",
-    "/chords/:path*",
-    "/login",
-    "/signup",
-  ],
+  matcher: ["/dashboard/:path*", "/login", "/signup"],
 };

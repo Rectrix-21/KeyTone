@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { Activity, Layers, Radar, Sparkles, Timer, Wand2 } from "lucide-react";
+import { Activity, Disc3, Radar, Sparkles, Timer, Wand2 } from "lucide-react";
 import { ScrollReveal } from "@/components/layout/ScrollReveal";
 
-const LANDING_FEATURES = [
+const SECONDARY_FEATURES = [
   {
     title: "MIDI Generator",
     description: "Generate structured MIDI ideas in seconds.",
@@ -14,13 +14,6 @@ const LANDING_FEATURES = [
     description: "Upgrade progressions with smarter voicing.",
     icon: Wand2,
     href: "/chords",
-  },
-  {
-    title: "Stem and MIDI Extraction",
-    description:
-      "Extract MIDI in the browser and extract stems in the desktop app.",
-    icon: Layers,
-    href: "/extract",
   },
   {
     title: "Track Analyzer",
@@ -39,6 +32,12 @@ const LANDING_FEATURES = [
     description: "Tap tempo and lock groove with confidence.",
     icon: Timer,
     href: "/bpm",
+  },
+  {
+    title: "Key & BPM Changer",
+    description: "Live tempo and key faders, just like a CDJ.",
+    icon: Disc3,
+    href: "/keychanger",
   },
 ] as const;
 
@@ -69,25 +68,26 @@ export default function HomePage() {
             className="home-hero-title home-hero-reveal cyber-heading text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl"
             style={{ animationDelay: "40ms" }}
           >
-            Create better music. Faster.
+            Turn Any Song Into MIDI Right In Your Browser
           </h1>
           <p
             className="home-hero-reveal mx-auto mt-5 max-w-3xl text-base text-foreground/75 sm:text-lg"
             style={{ animationDelay: "140ms" }}
           >
-            KeyTone combines AI-powered MIDI generation, chord enhancement, stem
-            extraction, and music discovery tools into one premium creative
-            studio.
+            KeyTone transcribes melody and chords straight from the mix in
+            about a minute, no stem separation, no plugins, no downloads.
+            Chord improvement, MIDI generation, and track analysis live in
+            the same toolkit.
           </p>
           <div
             className="home-hero-reveal mt-8 flex flex-col justify-center gap-3 sm:flex-row"
             style={{ animationDelay: "240ms" }}
           >
             <Link
-              href="/dashboard"
+              href="/extract"
               className="cyber-btn-primary home-cta-primary px-6 py-3 text-center text-base font-medium"
             >
-              Enter Studio
+              Try Audio to MIDI Free
             </Link>
             <a
               href="#features"
@@ -108,8 +108,49 @@ export default function HomePage() {
             Built for modern music workflows
           </h2>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {LANDING_FEATURES.map((feature, index) => (
+
+        <ScrollReveal>
+          <article className="home-feature-card glass grid gap-6 rounded-2xl p-6 sm:p-8 lg:grid-cols-[1.2fr_1fr] lg:items-center">
+            <div>
+              <span className="rounded-full border border-cyan-400/40 bg-cyan-500/10 px-3 py-1 text-xs uppercase tracking-[0.12em] text-cyan-200">
+                Flagship tool
+              </span>
+              <h3 className="mt-4 text-2xl font-semibold text-cyan-100 sm:text-3xl">
+                Audio to MIDI Converter
+              </h3>
+              <p className="mt-3 text-base text-foreground/75 sm:text-lg">
+                Drop in any song and get melody and chord MIDI transcribed
+                directly from the mix, no stem separation wait, confidence
+                scores included, ready to drop into any DAW.
+              </p>
+              <div className="mt-5">
+                <Link
+                  href="/extract"
+                  className="cyber-btn-primary inline-flex items-center px-5 py-2.5 text-sm font-medium sm:text-base"
+                >
+                  Try Audio to MIDI
+                </Link>
+              </div>
+            </div>
+            <ul className="space-y-3 text-sm text-foreground/75 sm:text-base">
+              <li className="flex gap-2">
+                <span className="text-cyan-300">•</span>
+                <span>Melody and chord transcription from the full mix</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-cyan-300">•</span>
+                <span>No stem-separation wait, runs on the original audio</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-cyan-300">•</span>
+                <span>Confidence-scored output so you know what to clean up</span>
+              </li>
+            </ul>
+          </article>
+        </ScrollReveal>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {SECONDARY_FEATURES.map((feature, index) => (
             <ScrollReveal key={feature.title} delayMs={(index % 3) * 70}>
               <article className="home-feature-card glass rounded-2xl p-5">
                 <span className="home-feature-icon">
@@ -161,7 +202,55 @@ export default function HomePage() {
       </section>
 
       <ScrollReveal>
-        <section className="mt-16 rounded-3xl border border-[rgba(147,51,234,0.34)] bg-black/35 px-6 py-10 text-center backdrop-blur-sm sm:px-8">
+        <section className="mt-16 rounded-3xl border border-cyan-500/20 bg-black/35 px-6 py-10 backdrop-blur-sm sm:px-8">
+          <div className="mb-6 text-center">
+            <p className="text-sm uppercase tracking-[0.14em] text-cyan-200/80">
+              Pricing
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold text-cyan-100 sm:text-3xl">
+              Start free. Upgrade only if you need more.
+            </h2>
+          </div>
+          <div className="mx-auto grid max-w-3xl gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-cyan-500/22 bg-black/35 p-5">
+              <p className="text-sm uppercase tracking-[0.12em] text-cyan-200/80">
+                Free
+              </p>
+              <p className="mt-2 text-3xl font-semibold text-cyan-50">$0</p>
+              <p className="mt-2 text-sm text-foreground/70">
+                All Discover tools, plus 5 credits a week for Create tools.
+                No credit card required.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-fuchsia-400/35 bg-black/35 p-5">
+              <p className="text-sm uppercase tracking-[0.12em] text-fuchsia-200/85">
+                Pro
+              </p>
+              <p className="mt-2 text-3xl font-semibold text-cyan-50">
+                $9.99
+                <span className="ml-1 text-base font-medium text-foreground/65">
+                  /month
+                </span>
+              </p>
+              <p className="mt-2 text-sm text-foreground/70">
+                100 credits a month, full variation modes, and advanced
+                chord improver styles.
+              </p>
+            </div>
+          </div>
+          <div className="mt-6 text-center">
+            <Link
+              href="/pricing"
+              className="inline-flex items-center rounded-lg border border-cyan-700/45 bg-black/35 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:border-cyan-300/55 hover:bg-cyan-500/10"
+            >
+              See full pricing details
+            </Link>
+          </div>
+        </section>
+      </ScrollReveal>
+
+      <ScrollReveal>
+        <section className="mt-8 rounded-3xl border border-[rgba(147,51,234,0.34)] bg-black/35 px-6 py-10 text-center backdrop-blur-sm sm:px-8">
           <p className="text-sm uppercase tracking-[0.14em] text-fuchsia-200/80">
             Start Now
           </p>
@@ -169,21 +258,22 @@ export default function HomePage() {
             Jump into your workflow in seconds
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-base text-foreground/72 sm:text-lg">
-            Enter directly into Create for production tools or Discover for
-            analysis and reference-finding.
+            Explore Create tools for production or Discover tools for
+            analysis and reference-finding, free on every plan once you sign
+            in.
           </p>
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <Link
               href="/generator"
               className="cyber-btn-primary home-cta-primary inline-flex px-7 py-3 text-base font-medium"
             >
-              Enter Create
+              Explore Create
             </Link>
             <Link
               href="/analyzer"
               className="cyber-btn home-cta-secondary inline-flex px-7 py-3 text-base"
             >
-              Enter Discover
+              Explore Discover
             </Link>
           </div>
         </section>

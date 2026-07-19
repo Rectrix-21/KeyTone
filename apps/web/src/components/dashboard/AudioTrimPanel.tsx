@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  computePeaks,
   decodeAudioFile,
   estimateWavBytes,
   exceedsUploadLimit,
+  renderWaveformBars,
   trimFileToWavFile,
 } from "@/lib/audio/trimAudio";
 
@@ -15,7 +15,9 @@ interface AudioTrimPanelProps {
   onCancel: () => void;
 }
 
-type DragTarget = "start" | "end" | "seek" | null;
+type DragTarget = "start" | "end" | "move" | "seek" | null;
+
+const MAX_SELECTION_SECONDS = 60;
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -43,6 +45,7 @@ export function AudioTrimPanel({
   const dragTargetRef = useRef<DragTarget>(null);
   const startSecRef = useRef(startSec);
   const endSecRef = useRef(endSec);
+  const moveDragRef = useRef({ pointerStartSec: 0, startSec: 0, endSec: 0 });
 
   useEffect(() => {
     startSecRef.current = startSec;
@@ -62,7 +65,7 @@ export function AudioTrimPanel({
         if (cancelled) return;
         setBuffer(decoded);
         setStartSec(0);
-        setEndSec(Math.min(60, decoded.duration));
+        setEndSec(Math.min(MAX_SELECTION_SECONDS, decoded.duration));
         setPlayheadSec(0);
       })
       .catch((decodeError) => {
@@ -92,21 +95,7 @@ export function AudioTrimPanel({
 
   useEffect(() => {
     if (!buffer || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const width = canvas.width;
-    const height = canvas.height;
-    const peaks = computePeaks(buffer, width);
-
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "rgba(148, 163, 184, 0.4)";
-    const mid = height / 2;
-    for (let i = 0; i < peaks.length; i++) {
-      const barHeight = Math.max(1, peaks[i] * mid);
-      ctx.fillRect(i, mid - barHeight, 1, barHeight * 2);
-    }
+    renderWaveformBars(canvasRef.current, buffer);
   }, [buffer]);
 
   const duration = buffer?.duration ?? 0;
@@ -171,9 +160,29 @@ export function AudioTrimPanel({
       const sec = secFromClientX(event.clientX);
 
       if (target === "start") {
-        setStartSec(Math.max(0, Math.min(sec, endSecRef.current - 0.2)));
+        const minStart = Math.max(
+          0,
+          endSecRef.current - MAX_SELECTION_SECONDS,
+        );
+        setStartSec(
+          Math.max(minStart, Math.min(sec, endSecRef.current - 0.2)),
+        );
       } else if (target === "end") {
-        setEndSec(Math.min(duration, Math.max(sec, startSecRef.current + 0.2)));
+        const maxEnd = Math.min(
+          duration,
+          startSecRef.current + MAX_SELECTION_SECONDS,
+        );
+        setEndSec(Math.min(maxEnd, Math.max(sec, startSecRef.current + 0.2)));
+      } else if (target === "move") {
+        const initial = moveDragRef.current;
+        const width = initial.endSec - initial.startSec;
+        const delta = sec - initial.pointerStartSec;
+        let nextStart = Math.min(
+          Math.max(0, duration - width),
+          Math.max(0, initial.startSec + delta),
+        );
+        setStartSec(nextStart);
+        setEndSec(nextStart + width);
       } else if (target === "seek") {
         const clamped = Math.min(
           endSecRef.current,
@@ -212,6 +221,16 @@ export function AudioTrimPanel({
     dragTargetRef.current = target;
   };
 
+  const onSelectionPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+    dragTargetRef.current = "move";
+    moveDragRef.current = {
+      pointerStartSec: secFromClientX(event.clientX),
+      startSec,
+      endSec,
+    };
+  };
+
   const togglePlay = () => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -242,8 +261,8 @@ export function AudioTrimPanel({
             {file.name} is {formatTime(duration)} long
           </p>
           <p className="mt-1 text-xs text-foreground/70">
-            Extraction works best under a minute — drag the handles to choose
-            the part you want.
+            Selections are capped at 1 minute. Drag the handles to resize, or
+            drag the highlighted range to move it.
           </p>
         </div>
         <button
@@ -276,11 +295,13 @@ export function AudioTrimPanel({
             />
 
             <div
-              className="pointer-events-none absolute inset-y-2 bg-cyan-400/12"
+              onPointerDown={onSelectionPointerDown}
+              className="absolute inset-y-2 cursor-grab touch-none bg-cyan-400/12 active:cursor-grabbing"
               style={{
                 left: `${startPct}%`,
                 width: `${Math.max(0, endPct - startPct)}%`,
               }}
+              aria-label="Drag to move the selected range"
             />
 
             <div
@@ -324,7 +345,7 @@ export function AudioTrimPanel({
           {tooLarge ? (
             <p className="text-xs text-danger">
               Selection is too large ({(estimatedBytes / (1024 * 1024)).toFixed(1)}
-              MB) — max 25MB, pick a shorter range.
+              MB), max 25MB, pick a shorter range.
             </p>
           ) : null}
 

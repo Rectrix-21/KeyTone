@@ -1497,6 +1497,22 @@ const ProjectCardComponent = ({
   const usedDevice = useMemo(() => getUsedProcessingDevice(project), [project]);
   const showRuntimeFailedNote = usedDevice === "failed";
 
+  // Audio-sourced projects only have MIDI for the lane(s) actually
+  // transcribed at upload time. MIDI/generated sources always carry every
+  // lane, so the full picker applies there (and for older audio uploads
+  // that predate chords-only transcription and used "full").
+  const availableLaneTargets = useMemo((): readonly VariationAlterTarget[] => {
+    const ALL_LANES = ["full", "melody", "chord", "bass"] as const;
+    if (project.options?.input_kind !== "audio") {
+      return ALL_LANES;
+    }
+    const originalTarget = project.options?.variation_target;
+    if (!originalTarget || originalTarget === "full") {
+      return ALL_LANES;
+    }
+    return [originalTarget];
+  }, [project.options?.input_kind, project.options?.variation_target]);
+
   useEffect(() => {
     if (project.feature !== "variation") {
       return;
@@ -1891,11 +1907,11 @@ const ProjectCardComponent = ({
         <div className="mt-3 rounded-md border border-cyan-500/20 bg-black/35 p-3">
           <p className="text-xs text-foreground/70">Chord Improver settings</p>
           <div className="mt-3 space-y-3">
-            <div>
-              <p className="text-xs text-foreground/60">Lane</p>
-              <div className="mt-1 flex flex-wrap gap-2">
-                {(["full", "melody", "chord", "bass"] as const).map(
-                  (target) => (
+            {availableLaneTargets.length > 1 ? (
+              <div>
+                <p className="text-xs text-foreground/60">Lane</p>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {availableLaneTargets.map((target) => (
                     <button
                       key={target}
                       type="button"
@@ -1908,10 +1924,10 @@ const ProjectCardComponent = ({
                     >
                       {target}
                     </button>
-                  ),
-                )}
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : null}
 
             <div>
               <p className="text-xs text-foreground/60">Intent</p>

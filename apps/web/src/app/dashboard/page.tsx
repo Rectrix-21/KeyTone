@@ -19,41 +19,48 @@ type HubFeatureCard = {
 
 const FEATURE_CARDS: HubFeatureCard[] = [
   {
-    href: "/analyzer",
+    href: "/dashboard/analyzer",
     title: "Track Analyzer",
     description: "BPM, key, sections, and chord movement from uploaded audio.",
     group: "discover",
   },
   {
-    href: "/similar",
+    href: "/dashboard/similar",
     title: "Similar Songs",
     description:
       "Search a song and discover closely matching tracks, ranked by relevance.",
     group: "discover",
   },
   {
-    href: "/bpm",
+    href: "/dashboard/bpm",
     title: "BPM Finder",
     description: "Tap tempo, metronome, and precision BPM control workflow.",
     group: "discover",
   },
   {
-    href: "/extract",
+    href: "/dashboard/extract",
     title: "Stem and MIDI Extraction",
     description:
       "Extract MIDI in-browser and download the desktop app for stem separation.",
     group: "create",
   },
   {
-    href: "/chords",
+    href: "/dashboard/chords",
     title: "Chord Improver",
     description: "Safe, pro, and bold harmonic upgrades with intent controls.",
     group: "create",
   },
   {
-    href: "/generator",
+    href: "/dashboard/generator",
     title: "Track Generator",
     description: "Generate safe, fresh, and experimental starter progressions.",
+    group: "create",
+  },
+  {
+    href: "/dashboard/keychanger",
+    title: "Key & BPM Changer",
+    description:
+      "Drag live tempo and key faders while a track plays, CDJ-style. Free to preview, Pro to export.",
     group: "create",
   },
 ];

@@ -12,7 +12,7 @@ class ChordCleanupConfig:
     min_note_duration_sec: float = 0.10
     min_note_velocity: int = 34
     onset_window_sec: float = 0.06
-    min_cluster_notes: int = 3
+    min_cluster_notes: int = 2
     max_cluster_pitch_span: int = 24
     fallback_min_duration_sec: float = 0.25
     fallback_min_velocity: int = 45
@@ -134,19 +134,109 @@ def cleanup_chord_midi(
     clusters = cluster_notes_by_onset(filtered, config)
     selected_clusters = select_harmonic_clusters(clusters, config)
 
-    if selected_clusters:
-        return rebuild_chord_midi_from_clusters(selected_clusters, output_midi_path)
+    # Clusters that don't clear the full-chord bar (too few distinct pitches,
+    # or too wide a span) still likely represent a real chord moment that the
+    # transcriber only partially caught -- previously any cluster that didn't
+    # qualify was dropped outright, silently deleting that beat from the
+    # progression. Keep the strong notes from those instead of losing the
+    # moment entirely, while still filtering out weak/spurious ones.
+    selected_ids = {id(cluster) for cluster in selected_clusters}
+    partial_clusters: list[list[pretty_midi.Note]] = []
+    for cluster in clusters:
+        if id(cluster) in selected_ids:
+            continue
+        strong_notes = [
+            note
+            for note in cluster
+            if (note.end - note.start) >= config.fallback_min_duration_sec
+            and int(note.velocity) >= config.fallback_min_velocity
+        ]
+        if strong_notes:
+            partial_clusters.append(strong_notes)
 
-    fallback_notes = [
-        note
-        for note in filtered
-        if (note.end - note.start) >= config.fallback_min_duration_sec
-        and int(note.velocity) >= config.fallback_min_velocity
-    ]
+    all_clusters = sorted(
+        [*selected_clusters, *partial_clusters],
+        key=lambda cluster: min(note.start for note in cluster),
+    )
 
-    if not fallback_notes:
+    if not all_clusters:
         output_midi_path.parent.mkdir(parents=True, exist_ok=True)
         pretty_midi.PrettyMIDI().write(str(output_midi_path))
         return output_midi_path
 
-    return rebuild_chord_midi_from_clusters([fallback_notes], output_midi_path)
+    return rebuild_chord_midi_from_clusters(all_clusters, output_midi_path)
+
+
+def cleanup_melody_midi(
+    raw_melody_midi_path: Path,
+    output_midi_path: Path,
+    config: ChordCleanupConfig = DEFAULT_CHORD_CLEANUP_CONFIG,
+    min_melody_velocity: int = 55,
+) -> Path:
+    """Reduce a raw melody transcription to a single monophonic top line.
+
+    Basic Pitch's raw output for the "melody" target transcribes everything
+    present in the harmonic-separated mix -- chord tones and stray
+    harmonics included -- with no isolation of an actual single melodic
+    line. This applies the standard "skyline" heuristic: at any point in
+    time where multiple notes overlap, only the highest-pitched one is kept
+    as melody, trimming or dropping the lower notes underneath it.
+
+    Basic Pitch also frequently emits weak, low-confidence "ghost" notes
+    from octave/harmonic doubling that sit above the true melody note and
+    would otherwise win that pitch comparison outright. These are reliably
+    much quieter than genuine melody notes, so they're filtered out before
+    the skyline pass runs (falling back to the unfiltered set if that
+    leaves nothing at all, rather than producing silence).
+    """
+    midi = pretty_midi.PrettyMIDI(str(raw_melody_midi_path))
+    notes = [
+        note
+        for instrument in midi.instruments
+        if not instrument.is_drum
+        for note in instrument.notes
+    ]
+
+    filtered = filter_transient_notes(notes, config)
+    strong = [note for note in filtered if int(note.velocity) >= min_melody_velocity]
+    candidates = strong if strong else filtered
+    candidates.sort(key=lambda note: (note.start, -note.pitch))
+    filtered = candidates
+
+    melody: list[pretty_midi.Note] = []
+    for note in filtered:
+        start = float(note.start)
+        end = float(note.end)
+        keep = True
+
+        while melody and start < melody[-1].end:
+            top = melody[-1]
+            if int(note.pitch) > int(top.pitch):
+                if start <= top.start:
+                    melody.pop()
+                    continue
+                top.end = start
+                break
+            keep = False
+            break
+
+        if not keep or end <= start:
+            continue
+
+        melody.append(
+            pretty_midi.Note(
+                velocity=int(note.velocity),
+                pitch=int(note.pitch),
+                start=start,
+                end=end,
+            )
+        )
+
+    output_midi_path.parent.mkdir(parents=True, exist_ok=True)
+    result = pretty_midi.PrettyMIDI()
+    if melody:
+        instrument = pretty_midi.Instrument(program=0, is_drum=False)
+        instrument.notes = melody
+        result.instruments.append(instrument)
+    result.write(str(output_midi_path))
+    return output_midi_path

@@ -339,6 +339,7 @@ def _build_chord_pitches(
     complexity: ComplexityLevel,
     variant: StarterVariant,
     rng: random.Random,
+    previous_pitches: list[int] | None = None,
 ) -> list[int]:
     intervals = list(QUALITY_INTERVALS[quality])
 
@@ -364,6 +365,23 @@ def _build_chord_pitches(
         pitches = [pitch - 12 for pitch in pitches]
     while pitches and pitches[0] < 46:
         pitches = [pitch + 12 for pitch in pitches]
+
+    # Each bar's chord was previously voiced in isolation, with no regard
+    # for where the last chord's voicing left off -- every chord anchored
+    # to the same fixed octave/inversion choice regardless of context,
+    # which produces large, disconnected leaps in the top-note line between
+    # bars roughly 40% of the time. Try shifting the whole chord an octave
+    # up or down and keep whichever placement puts this chord's top note
+    # closest to the previous chord's top note, the same voice-leading
+    # technique already used for the Chord Improver's re-voicing logic.
+    if previous_pitches and pitches:
+        target_top = max(previous_pitches)
+        candidates = [pitches]
+        for shift in (-12, 12):
+            shifted = [pitch + shift for pitch in pitches]
+            if min(shifted) >= 34 and max(shifted) <= 96:
+                candidates.append(shifted)
+        pitches = min(candidates, key=lambda candidate: abs(max(candidate) - target_top))
 
     return sorted(set(max(28, min(100, pitch)) for pitch in pitches))
 
@@ -471,6 +489,7 @@ def generate_chords(
     notes: list[NoteEvent] = []
     plan: list[ChordPlan] = []
     labels: list[str] = []
+    previous_chord_pitches: list[int] | None = None
 
     for bar in range(bars):
         degree = degrees[bar]
@@ -479,7 +498,16 @@ def generate_chords(
             genre, quality, complexity, variant, rng, richness_bias
         )
         root_pc = _scale_pc(key_root, mode, degree)
-        chord_pitches = _build_chord_pitches(root_pc, quality, extension, complexity, variant, rng)
+        chord_pitches = _build_chord_pitches(
+            root_pc,
+            quality,
+            extension,
+            complexity,
+            variant,
+            rng,
+            previous_chord_pitches,
+        )
+        previous_chord_pitches = chord_pitches
 
         label = _chord_label(degree, quality, extension)
         labels.append(label)

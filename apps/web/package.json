@@ -4,14 +4,16 @@
   "private": true,
   "scripts": {
     "prepare:essentia": "node scripts/copy-essentia-wasm.mjs",
-    "postinstall": "npm run prepare:essentia",
-    "dev": "npm run prepare:essentia && next dev --turbopack",
-    "build": "npm run prepare:essentia && next build",
-    "start": "npm run prepare:essentia && next start",
+    "prepare:soundtouch": "node scripts/copy-soundtouch-worklet.mjs",
+    "postinstall": "npm run prepare:essentia && npm run prepare:soundtouch",
+    "dev": "npm run prepare:essentia && npm run prepare:soundtouch && next dev --turbopack",
+    "build": "npm run prepare:essentia && npm run prepare:soundtouch && next build",
+    "start": "npm run prepare:essentia && npm run prepare:soundtouch && next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@soundtouchjs/audio-worklet": "^2.1.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.49.1",
     "essentia.js": "^0.1.3",

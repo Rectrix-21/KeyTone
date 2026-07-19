@@ -23,12 +23,13 @@ type WorkspaceBootstrapCache = {
 
 const WORKSPACE_ROUTES = [
   "/dashboard",
-  "/analyzer",
-  "/similar",
-  "/bpm",
-  "/extract",
-  "/chords",
-  "/generator",
+  "/dashboard/analyzer",
+  "/dashboard/similar",
+  "/dashboard/bpm",
+  "/dashboard/keychanger",
+  "/dashboard/extract",
+  "/dashboard/chords",
+  "/dashboard/generator",
 ] as const;
 
 function limitProjectHistory(projects: Project[]): Project[] {

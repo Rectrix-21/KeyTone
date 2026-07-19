@@ -169,6 +169,13 @@ export default function PricingPage() {
               <span className="text-cyan-300">•</span>
               <span>Standard MIDI and chord generation</span>
             </li>
+            <li className="flex gap-2">
+              <span className="text-cyan-300">•</span>
+              <span>
+                Free live preview in the Key &amp; BPM Changer (tempo and key
+                faders)
+              </span>
+            </li>
           </ul>
           <div className="mt-8">
             <button
@@ -220,6 +227,12 @@ export default function PricingPage() {
               <li className="flex gap-2">
                 <span className="text-fuchsia-300">•</span>
                 <span>Early access to new features</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-fuchsia-300">•</span>
+                <span>
+                  Export processed audio from the Key &amp; BPM Changer
+                </span>
               </li>
             </ul>
 

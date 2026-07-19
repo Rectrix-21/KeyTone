@@ -101,15 +101,34 @@ def transcribe_to_midi(audio_path: Path, output_dir: Path, try_harmonic_variant:
         original_output_dir = output_dir / "original"
         original_output_dir.mkdir(parents=True, exist_ok=True)
 
+        # try_harmonic_variant=False means the caller already handed us
+        # harmonic-separated audio (see the module docstring above), which is
+        # cleaner than a raw mix -- use the more sensitive thresholds tuned
+        # for harmonic content here too, or quieter/shorter chord tones that
+        # would've been caught by those thresholds fall below the raw-mix
+        # cutoffs instead and get silently dropped.
+        if try_harmonic_variant:
+            primary_onset_threshold, primary_frame_threshold, primary_min_note_length = (
+                0.5,
+                0.28,
+                110.0,
+            )
+        else:
+            primary_onset_threshold, primary_frame_threshold, primary_min_note_length = (
+                0.42,
+                0.22,
+                90.0,
+            )
+
         original_midi = _predict_midi(
             predict_and_save=predict_and_save,
             audio_input=audio_path,
             output_dir=original_output_dir,
             model_path=ICASSP_2022_MODEL_PATH,
             midi_tempo=120,
-            onset_threshold=0.5,
-            frame_threshold=0.28,
-            minimum_note_length=110.0,
+            onset_threshold=primary_onset_threshold,
+            frame_threshold=primary_frame_threshold,
+            minimum_note_length=primary_min_note_length,
         )
 
         selected_path = original_midi

@@ -804,7 +804,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 980,
     height: 680,
-    backgroundColor: "#050608",
+    backgroundColor: "#000000",
     title: "KeyTone Studio",
     icon: resolveLogoFilePath(),
     webPreferences: {
