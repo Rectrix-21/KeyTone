@@ -9,6 +9,7 @@ interface UploadDropzoneProps {
   mode?: "audio" | "audioOrMidi" | "midi";
   className?: string;
   message?: string;
+  maxSizeMb?: number;
 }
 
 export function UploadDropzone({
@@ -17,6 +18,7 @@ export function UploadDropzone({
   mode = "audio",
   className = "",
   message,
+  maxSizeMb = 25,
 }: UploadDropzoneProps) {
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -46,7 +48,7 @@ export function UploadDropzone({
     onDrop,
     disabled,
     multiple: false,
-    maxSize: 25 * 1024 * 1024,
+    maxSize: maxSizeMb * 1024 * 1024,
     accept:
       mode === "audio"
         ? AUDIO_ACCEPT
@@ -68,10 +70,10 @@ export function UploadDropzone({
       <p className="text-sm text-foreground/80">
         {message ??
           (mode === "audio"
-            ? "Drop MP3/WAV/M4A up to 25MB, or click to upload."
+            ? `Drop MP3/WAV/M4A up to ${maxSizeMb}MB, or click to upload.`
             : mode === "midi"
-              ? "Drop a MIDI file up to 25MB, or click to upload."
-              : "Drop MIDI or MP3/WAV/M4A up to 25MB, or click to upload.")}
+              ? `Drop a MIDI file up to ${maxSizeMb}MB, or click to upload.`
+              : `Drop MIDI or MP3/WAV/M4A up to ${maxSizeMb}MB, or click to upload.`)}
       </p>
     </div>
   );

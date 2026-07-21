@@ -318,7 +318,8 @@ export function KeyBpmChangerPanel({ isProUser }: KeyBpmChangerPanelProps) {
         <UploadDropzone
           onFileAccepted={onFileAccepted}
           mode="audio"
-          message="Drop MP3/WAV/M4A up to 25MB to load it into the key & BPM changer."
+          maxSizeMb={100}
+          message="Drop MP3/WAV/M4A up to 100MB to load it into the key & BPM changer."
         />
       ) : null}
 
